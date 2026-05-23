@@ -274,6 +274,12 @@ def api_project_delete(pid):
 from database import get_project_phases, update_phase_status, PHASE_ORDER
 
 
+@app.route('/phases')
+def phases_page():
+    """工序看板页面"""
+    return render_template('phases.html')
+
+
 @app.route('/api/projects/<int:pid>/phases', methods=['GET'])
 def api_project_phases(pid):
     """获取项目工序状态"""

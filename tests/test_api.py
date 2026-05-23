@@ -639,3 +639,18 @@ class TestPhaseMachineAPI:
         """无效工序名称"""
         rv = client.put('/api/projects/1/phases/不存在工序', json={'status': 'in_progress'})
         assert rv.status_code == 400
+
+class TestPhasesPage:
+    """工序看板页面测试"""
+
+    def test_phases_page_exists(self, client):
+        """工序看板页面可达"""
+        rv = client.get('/phases')
+        assert rv.status_code == 200
+        assert '工序流转' in rv.get_data(as_text=True) or 'phases' in rv.get_data(as_text=True)
+
+    def test_phases_page_has_tab(self, client):
+        """首页工序流转Tab存在"""
+        rv = client.get('/')
+        assert rv.status_code == 200
+        assert '工序流转' in rv.get_data(as_text=True)

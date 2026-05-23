@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工序看板 - 永颐无机磨石</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        body { background: #f0f2f5; }
+        .kanban-container { max-width: 1200px; margin: 0 auto; padding: 16px 20px; }
+        .kanban-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+        .kanban-header h2 { margin: 0; color: #1a5276; font-size: 1.4rem; }
+        .kanban-header .project-info { font-size: 0.85rem; color: #7f8c8d; }
+        .kanban-header .progress-text { font-size: 1rem; font-weight: 600; color: #2c3e50; }
+        .pipeline { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-bottom: 24px; }
+        .phase-card {
+            background: white; border-radius: 12px; padding: 16px; width: 160px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: center;
+            transition: all 0.3s ease; cursor: pointer; position: relative;
+            border-top: 4px solid #95a5a6;
+        }
+        .phase-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+        .phase-card .order-badge {
+            position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+            background: #1a5276; color: white; width: 24px; height: 24px;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 700;
+        }
+        .phase-card .icon { font-size: 28px; margin: 8px 0 4px; }
+        .phase-card .name { font-size: 14px; font-weight: 600; color: #2c3e50; margin-bottom: 4px; }
+        .phase-card .status-label { font-size: 12px; padding: 3px 10px; border-radius: 12px; display: inline-block; font-weight: 500; }
+        .phase-card .status-pending { background: #f0f0f0; color: #7f8c8d; }
+        .phase-card .status-in_progress { background: #d6eaf8; color: #1a5276; }
+        .phase-card .status-completed { background: #d5f5e3; color: #1e8449; }
+        .phase-card .arrow { position: absolute; right: -14px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #bdc3c7; }
+        .phase-card.pending { border-top-color: #95a5a6; }
+        .phase-card.in_progress { border-top-color: #2980b9; }
+        .phase-card.completed { border-top-color: #27ae60; }
+        .phase-card.locked { opacity: 0.6; cursor: not-allowed; }
+        .phase-card.locked:hover { transform: none; }
+        .phase-card .action-btn { margin-top: 8px; padding: 4px 12px; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
+        .action-btn.start { background: #2980b9; color: white; }
+        .action-btn.complete { background: #27ae60; color: white; }
+        .action-btn.rollback { background: #e67e22; color: white; }
+
+        .stats-bar {
+            background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 20px;
+        }
+        .stat-item { text-align: center; }
+        .stat-item .num { font-size: 1.6rem; font-weight: 700; }
+        .stat-item .label { font-size: 0.8rem; color: #888; margin-top: 2px; }
+        .stat-item .num.pending { color: #95a5a6; }
+        .stat-item .num.in-progress { color: #2980b9; }
+        .stat-item .num.completed { color: #27ae60; }
+
+        .progress-section { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px; }
+        .progress-section h3 { margin: 0 0 12px; font-size: 1rem; color: #2c3e50; }
+        .progress-section canvas { max-height: 200px; }
+
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: white; font-weight: 500; z-index: 9999; animation: slideIn 0.3s ease; }
+        .toast-success { background: #27ae60; }
+        .toast-error { background: #e74c3c; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        @media (max-width: 768px) {
+            .phase-card { width: 130px; padding: 12px; }
+            .phase-card .icon { font-size: 22px; }
+            .phase-card .name { font-size: 12px; }
+            .phase-card .arrow { display: none; }
+            .pipeline { gap: 8px; }
+        }
+        @media (max-width: 576px) {
+            .phase-card { width: 100%; max-width: 200px; }
+            .pipeline { flex-direction: column; align-items: center; }
+        }
+        select.project-selector { padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="kanban-container">
+        <div class="kanban-header">
+            <div>
+                <h2>🔄 工序流转看板</h2>
+                <div class="project-info">施工工序状态追踪与管理</div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                <select class="project-selector" id="projectSelect" onchange="loadPhases()"></select>
+                <span class="progress-text" id="progressText">0/9</span>
+            </div>
+        </div>
+
+        <!-- 统计 -->
+        <div class="stats-bar" id="statsBar">
+            <div class="stat-item"><div class="num pending" id="statPending">0</div><div class="label">⏳ 待办</div></div>
+            <div class="stat-item"><div class="num in-progress" id="statInProgress">0</div><div class="label">🔵 进行中</div></div>
+            <div class="stat-item"><div class="num completed" id="statCompleted">0</div><div class="label">✅ 已完成</div></div>
+            <div class="stat-item"><div class="num" style="color:#2c3e50;" id="statTotal">9</div><div class="label">📋 总工序</div></div>
+        </div>
+
+        <!-- 管道图 -->
+        <div class="pipeline" id="pipeline"></div>
+
+        <!-- 进度图表 -->
+        <div class="progress-section">
+            <h3>📊 工序完成进度</h3>
+            <canvas id="progressChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let progressChart = null;
+
+        async function loadProjects() {
+            const res = await fetch('/api/projects');
+            const projects = await res.json();
+            const sel = document.getElementById('projectSelect');
+            sel.innerHTML = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            if (projects.length > 0) loadPhases();
+        }
+
+        async function loadPhases() {
+            const pid = document.getElementById('projectSelect').value;
+            if (!pid) return;
+            try {
+                const res = await fetch(`/api/projects/${pid}/phases`);
+                const data = await res.json();
+                renderPhases(data.phases);
+            } catch(e) {
+                showToast('加载工序数据失败', 'error');
+            }
+        }
+
+        function renderPhases(phases) {
+            const pipeline = document.getElementById('pipeline');
+            const icons = {
+                '基层处理': '🧹', '抗裂砂浆施工': '🧱', '基层养护': '💧',
+                '面层界面处理': '🎨', '面层浇筑': '🏗️', '面层养护': '🌊',
+                '打磨抛光': '✨', '密封固化': '🔒', '最终验收': '✅'
+            };
+            const statusChinese = { 'pending': '待办', 'in_progress': '进行中', 'completed': '已完成' };
+
+            let pending = 0, inProgress = 0, completed = 0;
+
+            pipeline.innerHTML = phases.map((p, i) => {
+                const isLast = i === phases.length - 1;
+                const cls = p.status === 'completed' ? 'completed' : p.status === 'in_progress' ? 'in_progress' : 'pending';
+                if (p.status === 'pending') pending++;
+                else if (p.status === 'in_progress') inProgress++;
+                else if (p.status === 'completed') completed++;
+
+                return `
+                    <div class="phase-card ${cls}" onclick="showActions(${i})" id="card-${i}">
+                        <div class="order-badge">${p.phase_order}</div>
+                        <div class="icon">${icons[p.phase_name] || '📋'}</div>
+                        <div class="name">${p.phase_name}</div>
+                        <div>
+                            <span class="status-label status-${p.status}">${statusChinese[p.status] || p.status}</span>
+                        </div>
+                        ${!isLast ? '<div class="arrow">→</div>' : ''}
+                    </div>
+                `;
+            }).join('');
+
+            // 更新统计
+            document.getElementById('statPending').textContent = pending;
+            document.getElementById('statInProgress').textContent = inProgress;
+            document.getElementById('statCompleted').textContent = completed;
+            document.getElementById('progressText').textContent = `${completed}/${phases.length}`;
+
+            // 更新图表
+            updateChart(phases);
+        }
+
+        function showActions(index) {
+            const pid = document.getElementById('projectSelect').value;
+            if (!pid) return;
+
+            // 获取当前卡片信息
+            const cards = document.querySelectorAll('.phase-card');
+            const card = cards[index];
+            if (!card) return;
+
+            // 从DOM推断当前状态
+            const statusLabel = card.querySelector('.status-label');
+            const phaseName = card.querySelector('.name').textContent;
+            const currentStatus = statusLabel.className.includes('pending') ? 'pending'
+                : statusLabel.className.includes('in_progress') ? 'in_progress' : 'completed';
+
+            // 构建可执行的操作
+            const actions = [];
+            if (currentStatus === 'pending') actions.push({ label: '🔵 开始此工序', status: 'in_progress' });
+            if (currentStatus === 'in_progress') actions.push({ label: '✅ 标记完成', status: 'completed' });
+            if (currentStatus === 'completed') actions.push({ label: '↩️ 回退到进行中', status: 'in_progress' });
+
+            if (actions.length === 0) return;
+
+            // 选择操作
+            const msg = actions.map((a, i) => `${i+1}. ${a.label}`).join('\n');
+            const choice = prompt(`[${phaseName}] 当前状态: ${currentStatus}\n请选择操作:\n${msg}\n\n输入编号(1-${actions.length})或取消:`);
+            if (!choice) return;
+
+            const idx = parseInt(choice) - 1;
+            if (idx < 0 || idx >= actions.length) return;
+
+            updatePhase(pid, phaseName, actions[idx].status);
+        }
+
+        async function updatePhase(pid, phaseName, newStatus) {
+            try {
+                const res = await fetch(`/api/projects/${pid}/phases/${encodeURIComponent(phaseName)}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast(`✅ ${phaseName} → ${newStatus === 'completed' ? '已完成' : '进行中'}`);
+                    loadPhases();
+                } else {
+                    showToast(`❌ ${data.error || '操作失败'}`, 'error');
+                }
+            } catch(e) {
+                showToast('❌ 网络错误', 'error');
+            }
+        }
+
+        function updateChart(phases) {
+            const labels = phases.map(p => p.phase_name);
+            const data = phases.map(p => p.status === 'completed' ? 100 : p.status === 'in_progress' ? 50 : 0);
+            const colors = phases.map(p => p.status === 'completed' ? '#27ae60' : p.status === 'in_progress' ? '#2980b9' : '#ecf0f1');
+
+            if (progressChart) progressChart.destroy();
+
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            progressChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '完成度',
+                        data: data,
+                        backgroundColor: colors,
+                        borderRadius: 4,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    scales: {
+                        x: { beginAtZero: true, max: 100, title: { display: true, text: '完成度(%)' } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    const p = phases[ctx.dataIndex];
+                                    return p.status === 'completed' ? '✅ 已完成' : p.status === 'in_progress' ? '🔵 进行中' : '⏳ 待办';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function showToast(msg, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+
+        loadProjects();
+    </script>
+</body>
+</html>
