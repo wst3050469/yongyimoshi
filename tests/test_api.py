@@ -729,3 +729,74 @@ class TestCSVExport:
         """不支持的导出表返回错误"""
         rv = client.get('/api/export/csv/invalid_table')
         assert rv.status_code == 400
+
+class TestDarkMode:
+    """暗色模式测试"""
+
+    def test_dark_mode_script_in_head(self, client):
+        """独立页面在head中有暗色模式脚本"""
+        # 先登录以访问受保护页面
+        client.post('/api/auth/login', json={"username": "admin", "password": "admin123"})
+        for page in ['/workers', '/suppliers', '/equipment', '/safety',
+                      '/documents', '/notifications', '/acceptance', '/admin']:
+            rv = client.get(page)
+            html = rv.get_data(as_text=True)
+            assert 'yongyi_theme' in html, f"{page} 缺少暗色模式脚本"
+
+    def test_dark_mode_sets_data_theme(self, client):
+        """暗色模式脚本能设置data-theme属性"""
+        rv = client.get('/workers')
+        # 脚本内容检查
+        html = rv.get_data(as_text=True)
+        assert 'setAttribute("data-theme"' in html
+
+    def test_index_page_dark_mode(self, client):
+        """首页有暗色模式切换功能"""
+        rv = client.get('/')
+        html = rv.get_data(as_text=True)
+        assert 'toggleTheme' in html
+        assert 'yongyi_theme' in html
+
+class TestImportFeature:
+    """数据导入功能测试"""
+
+    def test_import_page_has_upload_button(self, client):
+        """管理员页面有导入按钮"""
+        client.post('/api/auth/login', json={"username": "admin", "password": "admin123"})
+        rv = client.get('/admin')
+        html = rv.get_data(as_text=True)
+        assert 'importFile' in html or '导入' in html
+
+    def test_import_api_exists(self, client):
+        """导入API存在"""
+        client.post('/api/auth/login', json={"username": "admin", "password": "admin123"})
+        rv = client.post('/api/import',
+                         json={"project": {"name": "测试导入", "area": 100}},
+                         content_type='application/json')
+        # 应该返回导入结果（可能成功或报错，但不会是404）
+        assert rv.status_code != 404
+
+    def test_import_invalid_json(self, client):
+        """导入API拒绝无效数据"""
+        client.post('/api/auth/login', json={"username": "admin", "password": "admin123"})
+        rv = client.post('/api/import',
+                         data="not json",
+                         content_type='application/json')
+        # Flask自动返回400
+        assert rv.status_code in (400, 415)
+
+class TestLightbox:
+    """图片查看器测试"""
+
+    def test_lightbox_function_exists(self, client):
+        """首页有Lightbox函数"""
+        rv = client.get('/')
+        html = rv.get_data(as_text=True)
+        assert 'showLightbox' in html
+
+    def test_photo_click_not_new_tab(self, client):
+        """照片点击不再打开新标签页"""
+        rv = client.get('/')
+        html = rv.get_data(as_text=True)
+        assert "window.open('/api/photo/" not in html
+        assert "showLightbox" in html
