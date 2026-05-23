@@ -51,6 +51,16 @@
     <div class="subtitle" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
     <span>基层抗裂砂浆 + 无机金磨石面层 | 总工期约22天 | 抗压≥60MPa | 亮度≥70GU</span>
     <span style="display:flex;align-items:center;gap:8px;font-size:0.85rem;">
+        <!-- 用户状态 -->
+        <span id="userStatus" style="display:none;align-items:center;gap:6px;">
+            <span id="userAvatar" style="display:inline-flex;align-items:center;justify-content:center;
+                  width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.2);
+                  font-size:12px;">👤</span>
+            <span id="userName"></span>
+            <a href="/admin" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:12px;">⚙️</a>
+            <a href="#" onclick="logout()" style="color:rgba(255,255,255,0.7);text-decoration:none;font-size:12px;">退出</a>
+        </span>
+        <a href="/login" id="loginLink" style="color:white;text-decoration:none;font-size:13px;">🔐 登录</a>
         <span>📋 项目:</span>
         <select id="projectSelector" onchange="switchProject()" 
                 style="padding:4px 8px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;
@@ -77,6 +87,7 @@
     <button class="nav-tab" data-tab="photos">📸 照片墙 <span class="badge-new">NEW</span></button>
     <button class="nav-tab" data-tab="inventory">📦 库存管理 <span class="badge-new">NEW</span></button>
     <button class="nav-tab" data-tab="dashboard">📊 进度看板 <span class="badge-new">NEW</span></button>
+    <button class="nav-tab" data-tab="environment">🌡️ 环境监测 <span class="badge-new">NEW</span></button>
     <button class="nav-tab" data-tab="params">📋 技术参数</button>
 </nav>
 <main class="main-content">
@@ -366,6 +377,19 @@
 </div>
 
 <!-- ============================================================ -->
+<!-- 面板9: 环境监测 -->
+<div class="tab-panel" id="panel-environment" style="display:none;">
+    <div class="content-section">
+        <h2>🌡️ 环境监测记录</h2>
+        <p style="color:#7f8c8d;font-size:14px;margin:0 0 16px 0;">
+            跟踪施工环境温度、湿度、基层含水率等参数，确保施工条件符合标准。
+        </p>
+        <div id="envEmbed" style="min-height:500px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+            <iframe src="/environment" style="width:100%;height:600px;border:none;"></iframe>
+        </div>
+    </div>
+</div>
+
 <!-- 面板6: 技术参数 -->
 <!-- ============================================================ -->
 <div class="tab-panel" id="panel-params">
@@ -922,6 +946,27 @@ function switchProject() {
             loadTimelineChart();
     showToast(`📋 已切换到项目 #${currentProjectId}`);
 }
+
+// ============================================================
+// 用户认证
+// ============================================================
+async function checkAuth() {
+    try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+            const data = await res.json();
+            const roleMap = {'admin':'管理员','manager':'项目经理','inspector':'质检员','worker':'施工员'};
+            document.getElementById('userName').textContent = data.display_name + ' (' + (roleMap[data.role] || data.role) + ')';
+            document.getElementById('userStatus').style.display = 'inline-flex';
+            document.getElementById('loginLink').style.display = 'none';
+        }
+    } catch(e) {}
+}
+async function logout() {
+    const res = await fetch('/api/auth/logout', { method: 'POST' });
+    if (res.ok) window.location.reload();
+}
+checkAuth();
 
 function loadChecklistForProject() {
     fetch(`/api/checklist?project_id=${currentProjectId}`)

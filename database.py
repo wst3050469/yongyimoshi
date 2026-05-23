@@ -353,6 +353,36 @@ def init_db():
             notes TEXT DEFAULT '',
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'worker',
+            phone TEXT DEFAULT '',
+            email TEXT DEFAULT '',
+            is_active INTEGER DEFAULT 1,
+            last_login TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS environment_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            record_date TEXT NOT NULL DEFAULT (date('now')),
+            record_time TEXT DEFAULT '',
+            temperature REAL DEFAULT 0,
+            humidity REAL DEFAULT 0,
+            base_moisture REAL DEFAULT NULL,
+            surface_temp REAL DEFAULT NULL,
+            wind_speed REAL DEFAULT NULL,
+            weather_condition TEXT DEFAULT '',
+            recorder TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
     """)
 
     conn.commit()
@@ -2915,4 +2945,175 @@ def import_project(data: Dict) -> Dict:
         "project_id": pid,
         "project_name": project_data.get('name', ''),
         "imported": import_count,
+    }
+
+
+# ============================================================
+# 用户认证管理
+# ============================================================
+
+def add_user(username: str, password_hash: str, display_name: str,
+             role: str = "worker", phone: str = "", email: str = "") -> int:
+    """添加用户"""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, display_name, role, phone, email)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (username, password_hash, display_name, role, phone, email))
+        uid = cursor.lastrowid
+        conn.commit()
+        return uid
+    except sqlite3.IntegrityError:
+        return -1
+    finally:
+        conn.close()
+
+
+def get_user_by_username(username: str) -> Optional[Dict]:
+    """通过用户名获取用户"""
+    conn = get_db()
+    cursor = conn.cursor()
+    user = cursor.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return dict(user) if user else None
+
+
+def get_user_by_id(uid: int) -> Optional[Dict]:
+    """通过ID获取用户"""
+    conn = get_db()
+    cursor = conn.cursor()
+    user = cursor.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    conn.close()
+    return dict(user) if user else None
+
+
+def get_users() -> List[Dict]:
+    """获取所有用户"""
+    conn = get_db()
+    cursor = conn.cursor()
+    users = cursor.execute("""
+        SELECT id, username, display_name, role, phone, email, is_active, last_login, created_at
+        FROM users ORDER BY id
+    """).fetchall()
+    conn.close()
+    return [dict(u) for u in users]
+
+
+def update_user(uid: int, **kwargs) -> bool:
+    """更新用户信息"""
+    allowed = ['display_name', 'role', 'phone', 'email', 'is_active', 'password_hash']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [uid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+    ok = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+
+def delete_user(uid: int) -> bool:
+    """删除用户"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE id = ?", (uid,))
+    ok = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+
+def update_last_login(uid: int):
+    """更新最后登录时间"""
+    from datetime import datetime
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET last_login = ? WHERE id = ?",
+                   (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), uid))
+    conn.commit()
+    conn.close()
+
+
+# ============================================================
+# 环境监测记录
+# ============================================================
+
+def add_environment_record(project_id: int, record_date: str = "",
+                           record_time: str = "", temperature: float = 0,
+                           humidity: float = 0, base_moisture: float = None,
+                           surface_temp: float = None, wind_speed: float = None,
+                           weather_condition: str = "", recorder: str = "",
+                           notes: str = "") -> int:
+    """添加环境监测记录"""
+    from datetime import date
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO environment_records
+        (project_id, record_date, record_time, temperature, humidity,
+         base_moisture, surface_temp, wind_speed, weather_condition, recorder, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (project_id, record_date or str(date.today()), record_time,
+          temperature, humidity, base_moisture, surface_temp, wind_speed,
+          weather_condition, recorder, notes))
+    rid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return rid
+
+
+def get_environment_records(project_id: int, days: int = 30) -> List[Dict]:
+    """获取环境监测记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    records = cursor.execute("""
+        SELECT * FROM environment_records
+        WHERE project_id = ?
+        ORDER BY record_date DESC, record_time DESC
+        LIMIT ?
+    """, (project_id, days * 10)).fetchall()
+    conn.close()
+    return [dict(r) for r in records]
+
+
+def delete_environment_record(rid: int) -> bool:
+    """删除环境记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM environment_records WHERE id = ?", (rid,))
+    ok = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+
+def get_environment_stats(project_id: int) -> Dict:
+    """获取环境统计数据"""
+    conn = get_db()
+    cursor = conn.cursor()
+    stats = cursor.execute("""
+        SELECT
+            COUNT(*) as total_records,
+            ROUND(AVG(temperature), 1) as avg_temp,
+            ROUND(MIN(temperature), 1) as min_temp,
+            ROUND(MAX(temperature), 1) as max_temp,
+            ROUND(AVG(humidity), 1) as avg_humidity,
+            ROUND(MIN(humidity), 1) as min_humidity,
+            ROUND(MAX(humidity), 1) as max_humidity,
+            ROUND(AVG(base_moisture), 1) as avg_base_moisture,
+            ROUND(AVG(surface_temp), 1) as avg_surface_temp
+        FROM environment_records
+        WHERE project_id = ?
+    """, (project_id,)).fetchone()
+    conn.close()
+    return dict(stats) if stats and stats['total_records'] else {
+        "total_records": 0, "avg_temp": 0, "min_temp": 0, "max_temp": 0,
+        "avg_humidity": 0, "min_humidity": 0, "max_humidity": 0,
+        "avg_base_moisture": None, "avg_surface_temp": None
     }

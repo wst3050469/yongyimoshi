@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ project.name }} - 永颐施工管理</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
         .metric-card { background: white; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }
@@ -17,6 +18,11 @@
         .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
         .status-active { background: #e8f5e9; color: #2e7d32; }
         .status-completed { background: #e3f2fd; color: #1565c0; }
+        .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+        .chart-card { background: white; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .chart-card h3 { margin: 0 0 12px 0; font-size: 15px; color: #2c3e50; text-align: center; }
+        .chart-card canvas { max-height: 260px; }
+        @media (max-width: 768px) { .chart-grid { grid-template-columns: 1fr; } }
         @media print { .no-print { display: none; } body { font-size: 11pt; } }
     </style>
 </head>
@@ -42,6 +48,93 @@
         <div class="metric-card"><div class="value">{{ stats.photo_count }}</div><div class="label">现场照片</div></div>
         <div class="metric-card"><div class="value">{{ stats.quality_total }}</div><div class="label">质检项</div></div>
     </div>
+
+    <!-- 数据可视化图表 -->
+    <div class="chart-grid no-print">
+        <div class="chart-card">
+            <h3>🧱 材料用量分布</h3>
+            <canvas id="materialChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>💰 成本构成概览</h3>
+            <canvas id="costChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>✅ 质量检测结果</h3>
+            <canvas id="qualityChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>📈 各阶段进度</h3>
+            <canvas id="phaseChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+    // 材料用量饼图
+    const matLabels = [{% for n, a in materials.items() if a > 0 %}'{{ n }}',{% endfor %}];
+    const matData = [{% for n, a in materials.items() if a > 0 %}{{ a }},{% endfor %}];
+    const matColors = ['#2e86c1','#e74c3c','#27ae60','#f39c12','#8e44ad','#1abc9c','#d35400','#34495e','#16a085','#c0392b'];
+    new Chart(document.getElementById('materialChart'), {
+        type: 'pie',
+        data: { labels: matLabels, datasets: [{ data: matData, backgroundColor: matColors.slice(0, matData.length) }] },
+        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+    });
+
+    // 成本构成饼图
+    (async function() {
+        const pid = {{ project.id }};
+        const res = await fetch('/api/budget/summary?project_id=' + pid);
+        const data = await res.json();
+        new Chart(document.getElementById('costChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['预算总额', '实际支出', '结余'],
+                datasets: [{ data: [
+                    data.total_planned || 0,
+                    data.total_actual || 0,
+                    Math.max(0, (data.total_planned||0) - (data.total_actual||0))
+                ], backgroundColor: ['#2e86c1', '#e74c3c', '#27ae60'] }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+        });
+    })();
+
+    // 质量检测结果
+    const qtPass = {{ quality_tests|selectattr('is_pass')|list|length }};
+    const qtFail = {{ quality_tests|rejectattr('is_pass')|list|length }};
+    const qtNone = Math.max(0, {{ quality_tests|length }} - qtPass - qtFail);
+    new Chart(document.getElementById('qualityChart'), {
+        type: 'bar',
+        data: {
+            labels: ['合格', '不合格', '未检测'],
+            datasets: [{ label: '数量', data: [qtPass, qtFail, qtNone], backgroundColor: ['#27ae60', '#e74c3c', '#95a5a6'] }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                   plugins: { legend: { display: false } } }
+    });
+
+    // 阶段进度条图
+    const phaseLabels = [{% for p, prog in phase_progress.items() %}'{{ p }}',{% endfor %}];
+    const phasePct = [{% for p, prog in phase_progress.items() %}{{ prog.percent }},{% endfor %}];
+    new Chart(document.getElementById('phaseChart'), {
+        type: 'bar',
+        data: {
+            labels: phaseLabels,
+            datasets: [{
+                label: '完成率(%)',
+                data: phasePct,
+                backgroundColor: phasePct.map(v => v >= 100 ? '#27ae60' : v >= 50 ? '#2e86c1' : '#e67e22'),
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            scales: { x: { beginAtZero: true, max: 100, title: { display: true, text: '完成率(%)' } } },
+            plugins: { legend: { display: false } }
+        }
+    });
+    </script>
 
     <!-- 项目信息 -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">

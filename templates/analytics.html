@@ -2,6 +2,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>数据看板 - 永颐施工平台</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px}
 .kpi-card{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;text-align:center}
@@ -9,13 +10,30 @@
 .kpi-card .label{font-size:0.78rem;color:#888;margin-top:4px}
 .chart-bar{height:20px;background:#e8e8e8;border-radius:10px;overflow:hidden;margin:4px 0}
 .chart-bar .fill{height:100%;background:linear-gradient(90deg,#2980b9,#1a5276);border-radius:10px;transition:width 1s}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+.chart-card{background:white;border-radius:10px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+.chart-card h3{margin:0 0 12px 0;font-size:15px;color:#2c3e50;text-align:center}
+.chart-card canvas{max-height:260px}
+@media(max-width:768px){.chart-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header class="app-header no-print"><h1>📊 数据看板</h1><div class="subtitle">项目总览 · KPI指标 · 全局进度 | <a href="/" style="color:white;">← 返回</a></div></header>
 <main class="main-content">
+
 <div class="card"><h2>🏗️ 项目总览</h2>
 <div class="kpi-grid" id="projectKpis"><div class="kpi-card"><div class="num">-</div><div class="label">加载中...</div></div></div></div>
+
+<div class="chart-grid">
+    <div class="chart-card">
+        <h3>📊 项目状态分布</h3>
+        <canvas id="projectStatusChart"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>💰 项目预算对比</h3>
+        <canvas id="budgetChart"></canvas>
+    </div>
+</div>
 
 <div class="card"><h2>✅ 检查清单总体进度</h2>
 <div id="checklistProgress"><p style="color:#999;">加载中...</p></div></div>
@@ -23,10 +41,10 @@
 <div class="card"><h2>📋 最近施工日志</h2>
 <div id="recentLogs"><p style="color:#999;">加载中...</p></div></div>
 </main>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     fetch('/api/analytics').then(r=>r.json()).then(d => {
-        // KPI
         document.getElementById('projectKpis').innerHTML = `
             <div class="kpi-card"><div class="num">${d.projects.total}</div><div class="label">总项目</div></div>
             <div class="kpi-card"><div class="num" style="color:#2980b9;">${d.projects.active}</div><div class="label">进行中</div></div>
@@ -39,21 +57,45 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="kpi-card"><div class="num" style="color:#e67e22;">${d.pending_requests}</div><div class="label">待审批申购</div></div>
         `;
 
-        // Checklist progress
+        const statusChart = document.getElementById('projectStatusChart');
+        if (d.projects.total > 0) {
+            new Chart(statusChart, {
+                type: 'doughnut',
+                data: {
+                    labels: ['进行中', '已完成', '其他'],
+                    datasets: [{ data: [d.projects.active, d.projects.completed, Math.max(0, d.projects.total - d.projects.active - d.projects.completed)], backgroundColor: ['#2980b9', '#27ae60', '#95a5a6'] }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        fetch('/api/projects').then(r=>r.json()).then(projects => {
+            const activeProjects = projects.slice(0, 8);
+            Promise.all(activeProjects.map(p => fetch('/api/budget/summary?project_id='+p.id).then(r=>r.json()))).then(budgets => {
+                new Chart(document.getElementById('budgetChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: activeProjects.map(p => p.name.slice(0, 8) + (p.name.length>8?'..':'')),
+                        datasets: [
+                            { label: '预算', data: budgets.map(b => b.total_planned||0), backgroundColor: '#2e86c1', borderRadius: 4 },
+                            { label: '实际', data: budgets.map(b => b.total_actual||0), backgroundColor: '#e74c3c', borderRadius: 4 }
+                        ]
+                    },
+                    options: { responsive: true, scales: { y: { beginAtZero: true, title: { display: true, text: '金额(¥)' } } }, plugins: { legend: { position: 'bottom' } } }
+                });
+            });
+        });
+
         const pct = d.checklist.progress;
         document.getElementById('checklistProgress').innerHTML = `
-            <div style="display:flex;justify-content:space-between;font-size:0.9rem;">
-                <span>${d.checklist.completed}/${d.checklist.total} 项</span><span>${pct}%</span>
-            </div>
-            <div class="chart-bar"><div class="fill" style="width:${pct}%;"></div></div>
-        `;
+            <div style="display:flex;justify-content:space-between;font-size:0.9rem;"><span>${d.checklist.completed}/${d.checklist.total} 项</span><span>${pct}%</span></div>
+            <div class="chart-bar"><div class="fill" style="width:${pct}%;"></div></div>`;
 
-        // Recent logs
         const logs = d.recent_logs;
         const logDiv = document.getElementById('recentLogs');
         if(logs.length===0){logDiv.innerHTML='<p style="color:#999;">暂无施工日志</p>';return;}
         logDiv.innerHTML = '<table class="result-table"><thead><tr><th>项目</th><th>日期</th><th>天气</th><th>内容</th></tr></thead><tbody>'+
-            logs.map(l => `<tr><td>${l.project_name}</td><td>${l.log_date}</td><td>${l.weather||'-'}</td><td>${(l.work_content||'-').slice(0,30)}</td></tr>`).join('')+
+            logs.map(l => '<tr><td>'+l.project_name+'</td><td>'+l.log_date+'</td><td>'+(l.weather||'-')+'</td><td>'+(l.work_content||'-').slice(0,30)+'</td></tr>').join('')+
             '</tbody></table>';
     });
 });

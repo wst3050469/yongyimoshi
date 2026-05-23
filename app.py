@@ -3,8 +3,9 @@
 Flask + SQLite + 29个API端点
 """
 
-from flask import Flask, render_template, request, jsonify, make_response
+from flask import Flask, render_template, request, jsonify, make_response, session, redirect, url_for
 from datetime import datetime
+from functools import wraps
 from validation import (
     validate_project_data, validate_inventory_data,
     validate_required, api_error, api_success, ValidationError,
@@ -24,20 +25,204 @@ from database import (
     export_project_data, backup_database,
     add_photo, get_photos, get_photo_by_id, delete_photo,
     get_timeline_data,
+    get_user_by_username, get_user_by_id, get_users,
+    add_user, update_user, delete_user, update_last_login,
+    add_environment_record, get_environment_records,
+    delete_environment_record, get_environment_stats,
 )
+from werkzeug.security import generate_password_hash, check_password_hash
 import json
+import os
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'yongyi-terrazzo-secret-key-change-in-production')
+
+
+# ============================================================
+# 认证装饰器
+# ============================================================
+
+def login_required(f):
+    """需要登录才能访问"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return api_error("未登录，请先登录", code=401)
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    """需要管理员权限"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return api_error("未登录，请先登录", code=401)
+        if session.get('role') != 'admin':
+            return api_error("需要管理员权限", code=403)
+        return f(*args, **kwargs)
+    return decorated
+
+
+def get_current_user():
+    """获取当前登录用户"""
+    if 'user_id' in session:
+        return get_user_by_id(session['user_id'])
+    return None
 
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    user = get_current_user()
+    return render_template('index.html', user=user)
 
 
 # ============================================================
-# 项目管理
+# 用户认证
 # ============================================================
+
+@app.route('/login')
+def login_page():
+    """登录页面"""
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    return render_template('login.html')
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def api_auth_login():
+    """用户登录"""
+    data = request.get_json()
+    if not data or not data.get('username') or not data.get('password'):
+        return api_error("用户名和密码不能为空")
+
+    user = get_user_by_username(data['username'])
+    if not user:
+        return api_error("用户名或密码错误")
+    if not user.get('is_active', 1):
+        return api_error("账号已被禁用")
+    if not check_password_hash(user['password_hash'], data['password']):
+        return api_error("用户名或密码错误")
+
+    session['user_id'] = user['id']
+    session['username'] = user['username']
+    session['display_name'] = user['display_name']
+    session['role'] = user['role']
+    update_last_login(user['id'])
+
+    return jsonify({
+        "status": "ok",
+        "user": {
+            "id": user['id'],
+            "username": user['username'],
+            "display_name": user['display_name'],
+            "role": user['role'],
+        }
+    })
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def api_auth_logout():
+    """用户登出"""
+    session.clear()
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/auth/me')
+@login_required
+def api_auth_me():
+    """当前用户信息"""
+    user = get_current_user()
+    if not user:
+        session.clear()
+        return api_error("用户不存在", code=401)
+    return jsonify({
+        "id": user['id'],
+        "username": user['username'],
+        "display_name": user['display_name'],
+        "role": user['role'],
+        "phone": user.get('phone', ''),
+        "email": user.get('email', ''),
+        "last_login": user.get('last_login', ''),
+    })
+
+
+@app.route('/api/auth/password', methods=['PUT'])
+@login_required
+def api_auth_password():
+    """修改密码"""
+    data = request.get_json()
+    if not data or not data.get('old_password') or not data.get('new_password'):
+        return api_error("旧密码和新密码不能为空")
+    if len(data['new_password']) < 6:
+        return api_error("新密码至少6位")
+
+    user = get_user_by_id(session['user_id'])
+    if not check_password_hash(user['password_hash'], data['old_password']):
+        return api_error("旧密码错误")
+
+    new_hash = generate_password_hash(data['new_password'])
+    update_user(user['id'], password_hash=new_hash)
+    return jsonify({"status": "ok", "message": "密码已修改"})
+
+
+# ============================================================
+# 用户管理 (管理员)
+# ============================================================
+
+@app.route('/api/users', methods=['GET'])
+@admin_required
+def api_users_list():
+    """用户列表"""
+    return jsonify(get_users())
+
+
+@app.route('/api/users', methods=['POST'])
+@admin_required
+def api_users_add():
+    """创建用户"""
+    data = request.get_json()
+    if not data or not data.get('username') or not data.get('password'):
+        return api_error("用户名和密码不能为空")
+    if len(data['password']) < 6:
+        return api_error("密码至少6位")
+
+    password_hash = generate_password_hash(data['password'])
+    uid = add_user(
+        username=data['username'],
+        password_hash=password_hash,
+        display_name=data.get('display_name', data['username']),
+        role=data.get('role', 'worker'),
+        phone=data.get('phone', ''),
+        email=data.get('email', ''),
+    )
+    if uid == -1:
+        return api_error("用户名已存在")
+    return jsonify({"status": "ok", "id": uid})
+
+
+@app.route('/api/users/<int:uid>', methods=['PUT'])
+@admin_required
+def api_users_update(uid):
+    """更新用户"""
+    data = request.get_json() or {}
+    if 'password' in data and data['password']:
+        if len(data['password']) < 6:
+            return api_error("密码至少6位")
+        data['password_hash'] = generate_password_hash(data['password'])
+        del data['password']
+    ok = update_user(uid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/users/<int:uid>', methods=['DELETE'])
+@admin_required
+def api_users_delete(uid):
+    """删除用户"""
+    if uid == session.get('user_id'):
+        return api_error("不能删除自己")
+    ok = delete_user(uid)
+    return jsonify({"status": "ok" if ok else "error"})
 
 @app.route('/api/projects', methods=['GET'])
 def api_projects_list():
@@ -469,6 +654,7 @@ from config import load_config, save_config, get_config, update_config, get_syst
 
 
 @app.route('/api/config', methods=['GET'])
+@login_required
 def api_config_get():
     """获取系统配置"""
     section = request.args.get('section', '')
@@ -505,14 +691,68 @@ def api_system_cleanup():
 
 
 @app.route('/admin')
+@login_required
 def admin_page():
     """系统管理页面"""
-    return render_template('admin.html')
+    return render_template('admin.html', user=get_current_user())
 
 
 # ============================================================
-# 批量操作
+# 环境监测
 # ============================================================
+
+@app.route('/environment')
+def environment_page():
+    """环境监测页面"""
+    return render_template('environment.html')
+
+
+@app.route('/api/environment', methods=['GET'])
+def api_environment_list():
+    """环境记录列表"""
+    project_id = request.args.get('project_id', 0, type=int)
+    if not project_id:
+        return api_error("缺少 project_id")
+    days = request.args.get('days', 30, type=int)
+    return jsonify(get_environment_records(project_id, days))
+
+
+@app.route('/api/environment', methods=['POST'])
+def api_environment_add():
+    """添加环境记录"""
+    data = request.get_json()
+    if not data or not data.get('project_id'):
+        return api_error("缺少 project_id")
+    rid = add_environment_record(
+        project_id=int(data['project_id']),
+        record_date=data.get('record_date', ''),
+        record_time=data.get('record_time', ''),
+        temperature=float(data.get('temperature', 0)),
+        humidity=float(data.get('humidity', 0)),
+        base_moisture=float(data['base_moisture']) if data.get('base_moisture') else None,
+        surface_temp=float(data['surface_temp']) if data.get('surface_temp') else None,
+        wind_speed=float(data['wind_speed']) if data.get('wind_speed') else None,
+        weather_condition=data.get('weather_condition', ''),
+        recorder=data.get('recorder', ''),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": rid})
+
+
+@app.route('/api/environment/<int:rid>', methods=['DELETE'])
+def api_environment_delete(rid):
+    """删除环境记录"""
+    ok = delete_environment_record(rid)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/environment/stats')
+def api_environment_stats():
+    """环境统计"""
+    project_id = request.args.get('project_id', 0, type=int)
+    if not project_id:
+        return api_error("缺少 project_id")
+    return jsonify(get_environment_stats(project_id))
 
 @app.route('/api/projects/batch', methods=['POST'])
 def api_projects_batch():
@@ -702,6 +942,30 @@ def print_report(pid):
     if 'error' in report:
         return api_error(report['error'])
     return render_template('print_report.html', report=report)
+
+
+@app.route('/api/report/<int:pid>/pdf')
+@login_required
+def api_report_pdf(pid):
+    """导出施工方案PDF报告"""
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        return api_error("PDF导出功能未安装（需要 weasyprint 库）")
+
+    from database import generate_report
+    report = generate_report(pid)
+    if 'error' in report:
+        return api_error(report['error'])
+
+    html_str = render_template('print_report.html', report=report)
+    pdf_bytes = HTML(string=html_str).write_pdf()
+
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    safe_name = report.get('project_name', f'project_{pid}').replace(' ', '_')
+    response.headers['Content-Disposition'] = f'attachment; filename={safe_name}_施工报告.pdf'
+    return response
 
 
 # ============================================================
@@ -1560,5 +1824,19 @@ def method_not_allowed(e):
 def server_error(e):
     return api_error("服务器内部错误", code=500)
 
+@app.errorhandler(401)
+def unauthorized(e):
+    return api_error("未登录，请先登录", code=401)
+
+@app.errorhandler(403)
+def forbidden(e):
+    return api_error("权限不足", code=403)
+
 if __name__ == '__main__':
+    # 初始化数据库并创建默认管理员
+    from database import init_db, get_users, add_user
+    init_db()
+    if len(get_users()) == 0:
+        add_user('admin', generate_password_hash('admin123'), '系统管理员', role='admin')
+        print("✅ 已创建默认管理员: admin / admin123")
     app.run(host='0.0.0.0', port=5000, debug=True)

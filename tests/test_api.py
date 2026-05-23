@@ -8,14 +8,19 @@ import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app import app
+from database import init_db, get_users, add_user
+from werkzeug.security import generate_password_hash
 import tempfile
 import pytest
 
 
 @pytest.fixture
 def client():
-    """测试客户端"""
+    """测试客户端（自动创建默认管理员）"""
     app.config['TESTING'] = True
+    init_db()
+    if len(get_users()) == 0:
+        add_user('admin', generate_password_hash('admin123'), '系统管理员', role='admin')
     with app.test_client() as client:
         yield client
 
@@ -266,3 +271,89 @@ class TestDocsAPI:
         data = json.loads(rv.data)
         assert 'endpoints' in data
         assert len(data['endpoints']) > 0
+
+class TestAuthAPI:
+    """用户认证API测试"""
+
+    def test_login_invalid(self, client):
+        """无效登录"""
+        rv = client.post('/api/auth/login', json={'username': 'nonexist', 'password': 'wrong'})
+        assert rv.status_code == 400
+        data = json.loads(rv.data)
+        assert 'error' in data
+
+    def test_login_valid(self, client):
+        """有效登录"""
+        rv = client.post('/api/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        assert rv.status_code == 200
+        data = json.loads(rv.data)
+        assert data['status'] == 'ok'
+        assert 'user' in data
+
+    def test_auth_me(self, client):
+        """获取当前用户"""
+        client.post('/api/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        rv = client.get('/api/auth/me')
+        assert rv.status_code == 200
+        data = json.loads(rv.data)
+        assert 'username' in data
+
+    def test_auth_me_unauthorized(self, client):
+        """未登录访问受限接口"""
+        rv = client.get('/api/auth/me')
+        assert rv.status_code == 401
+
+    def test_logout(self, client):
+        """登出"""
+        client.post('/api/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        rv = client.post('/api/auth/logout')
+        assert rv.status_code == 200
+        data = json.loads(rv.data)
+        assert data['status'] == 'ok'
+
+
+class TestEnvironmentAPI:
+    """环境监测API测试"""
+
+    def test_add_record(self, client):
+        """添加环境记录"""
+        rv = client.post('/api/environment', json={
+            'project_id': 1,
+            'temperature': 25.5,
+            'humidity': 60,
+            'weather_condition': '晴',
+            'recorder': '测试'
+        })
+        assert rv.status_code == 200
+        data = json.loads(rv.data)
+        assert 'id' in data
+
+    def test_list_records(self, client):
+        """获取环境记录列表"""
+        rv = client.get('/api/environment?project_id=1')
+        assert rv.status_code == 200
+        data = json.loads(rv.data)
+        assert isinstance(data, list)
+
+    def test_stats(self, client):
+        """环境统计"""
+        rv = client.get('/api/environment/stats?project_id=1')
+        assert rv.status_code == 200
+        data = json.loads(rv.data)
+        assert 'total_records' in data
+
+
+class TestPDFReport:
+    """PDF报告导出测试"""
+
+    def test_pdf_requires_auth(self, client):
+        """PDF导出需要登录"""
+        rv = client.get('/api/report/1/pdf')
+        assert rv.status_code == 401
+
+    def test_pdf_not_installed(self, client):
+        """未安装weasyprint时的错误提示"""
+        client.post('/api/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        rv = client.get('/api/report/1/pdf')
+        # weasyprint可能未安装，返回400；已安装则尝试生成PDF
+        assert rv.status_code in (400, 200)
