@@ -47,7 +47,10 @@
 
 <!-- Header -->
 <header class="app-header no-print">
-    <h1>🏗️ 永颐无机磨石 · 施工管理平台</h1>
+    <div style="display:flex;align-items:center;gap:8px;">
+        <button class="hamburger-btn" onclick="toggleSidebar()" title="导航菜单">☰</button>
+        <h1 style="margin:0;">🏗️ 永颐无机磨石 · 施工管理平台</h1>
+    </div>
     <div class="subtitle" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
     <span>基层抗裂砂浆 + 无机金磨石面层 | 总工期约22天 | 抗压≥60MPa | 亮度≥70GU</span>
     <span style="display:flex;align-items:center;gap:8px;font-size:0.85rem;">
@@ -61,6 +64,17 @@
             <a href="#" onclick="logout()" style="color:rgba(255,255,255,0.7);text-decoration:none;font-size:12px;">退出</a>
         </span>
         <a href="/login" id="loginLink" style="color:white;text-decoration:none;font-size:13px;">🔐 登录</a>
+        <!-- 全局搜索 -->
+        <span class="global-search-wrap">
+            <span class="search-icon">🔍</span>
+            <input class="global-search-input" id="globalSearch" type="text" placeholder="搜索项目、工人..." oninput="doSearch(this.value)" onfocus="showSearchResults()">
+            <div class="search-results-dropdown" id="searchResults"></div>
+        </span>
+        <!-- 通知 -->
+        <a href="/notifications" class="notif-bell-wrap" title="通知中心">
+            <span style="font-size:1.1rem;">🔔</span>
+            <span class="notif-badge" id="notifBadge">0</span>
+        </a>
         <span>📋 项目:</span>
         <select id="projectSelector" onchange="switchProject()" 
                 style="padding:4px 8px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;
@@ -76,6 +90,47 @@
     </span>
 </div>
 </header>
+
+<!-- 侧边栏导航 -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <h3>🏗️ 导航菜单</h3>
+        <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-section-title">📋 施工管理</div>
+        <a class="sidebar-link active" href="/" onclick="return closeSidebarAndGo(this)"><span class="link-icon">🏠</span>首页面板</a>
+        <a class="sidebar-link" href="/" onclick="return closeSidebarAndGo(this)"><span class="link-icon">📊</span>进度看板</a>
+        <a class="sidebar-link" href="/phases" onclick="return closeSidebarAndGo(this)"><span class="link-icon">🔄</span>工序流转</a>
+        <a class="sidebar-link" href="/project/0/daily-report" onclick="return closeSidebarAndGo(this)"><span class="link-icon">📝</span>施工日报</a>
+        <a class="sidebar-link" href="/environment" onclick="return closeSidebarAndGo(this)"><span class="link-icon">🌡️</span>环境监测</a>
+        <a class="sidebar-link" href="/acceptance" onclick="return closeSidebarAndGo(this)"><span class="link-icon">✅</span>验收管理</a>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-section-title">📦 资源管理</div>
+        <a class="sidebar-link" href="/workers" onclick="return closeSidebarAndGo(this)"><span class="link-icon">👷</span>工人管理</a>
+        <a class="sidebar-link" href="/suppliers" onclick="return closeSidebarAndGo(this)"><span class="link-icon">🏢</span>供应商</a>
+        <a class="sidebar-link" href="/equipment" onclick="return closeSidebarAndGo(this)"><span class="link-icon">🔧</span>设备管理</a>
+        <a class="sidebar-link" href="/subcontractors" onclick="return closeSidebarAndGo(this)"><span class="link-icon">🤝</span>分包商</a>
+        <a class="sidebar-link" href="/purchase-requests" onclick="return closeSidebarAndGo(this)"><span class="link-icon">📦</span>材料申购</a>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-section-title">📋 质量管理</div>
+        <a class="sidebar-link" href="/safety" onclick="return closeSidebarAndGo(this)"><span class="link-icon">⚠️</span>安全检查</a>
+        <a class="sidebar-link" href="/documents" onclick="return closeSidebarAndGo(this)"><span class="link-icon">📄</span>文档中心</a>
+        <a class="sidebar-link" href="/analytics" onclick="return closeSidebarAndGo(this)"><span class="link-icon">📈</span>数据分析</a>
+        <a class="sidebar-link" href="/calendar" onclick="return closeSidebarAndGo(this)"><span class="link-icon">📅</span>日历</a>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-section-title">⚙️ 系统</div>
+        <a class="sidebar-link" href="/notifications" onclick="return closeSidebarAndGo(this)"><span class="link-icon">🔔</span>通知中心</a>
+        <a class="sidebar-link" href="/templates" onclick="return closeSidebarAndGo(this)"><span class="link-icon">📋</span>项目模板</a>
+        <a class="sidebar-link" href="/admin" onclick="return closeSidebarAndGo(this)"><span class="link-icon">⚙️</span>管理员</a>
+        <a class="sidebar-link" href="/api/docs-page" onclick="return closeSidebarAndGo(this)"><span class="link-icon">📖</span>API文档</a>
+    </div>
+    <div class="sidebar-footer">永颐无机磨石 v4.0.0 | 施工管理平台</div>
+</nav>
 
 <!-- Navigation -->
 <nav class="nav-tabs no-print" id="navTabs">
@@ -1755,6 +1810,54 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ===== 侧边栏导航 =====
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('active');
+}
+function closeSidebarAndGo(el) {
+    toggleSidebar();
+    const href = el.getAttribute('href');
+    if (href && href !== '#') {
+        setTimeout(function() { window.location.href = href; }, 150);
+    }
+    return false;
+}
+// 侧边栏高亮当前页面
+(function highlightCurrentPage() {
+    const path = window.location.pathname;
+    document.querySelectorAll('.sidebar-link').forEach(function(link) {
+        const href = link.getAttribute('href');
+        if (href && path.startsWith(href) && href !== '/') {
+            link.classList.add('active');
+        } else if (href === '/' && path === '/') {
+            link.classList.add('active');
+        }
+    });
+})();
+
+// ===== 通知未读徽章 =====
+function updateNotifBadge() {
+    fetch('/api/notifications?unread_only=1')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var badge = document.getElementById('notifBadge');
+        if (data && data.length > 0) {
+            badge.textContent = data.length > 99 ? '99+' : data.length;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    })
+    .catch(function() { /* ignore */ });
+}
+// 页面加载时更新通知，每60秒刷新
+if (document.getElementById('notifBadge')) {
+    updateNotifBadge();
+    setInterval(updateNotifBadge, 60000);
+}
 </script>
 </body>
 </html>

@@ -654,3 +654,78 @@ class TestPhasesPage:
         rv = client.get('/')
         assert rv.status_code == 200
         assert '工序流转' in rv.get_data(as_text=True)
+
+class TestGlobalNavigation:
+    """全局导航与搜索测试"""
+
+    def test_search_input_exists(self, client):
+        """全局搜索框存在"""
+        rv = client.get('/')
+        assert rv.status_code == 200
+        html = rv.get_data(as_text=True)
+        assert 'globalSearch' in html or 'global-search' in html
+
+    def test_sidebar_exists(self, client):
+        """侧边栏导航存在"""
+        rv = client.get('/')
+        html = rv.get_data(as_text=True)
+        assert 'sidebar' in html or '导航菜单' in html
+
+    def test_independent_pages_have_sidebar(self, client):
+        """独立页面包含侧边栏"""
+        for page in ['/workers', '/suppliers', '/equipment', '/safety', '/documents',
+                      '/notifications', '/acceptance', '/phases', '/calendar']:
+            rv = client.get(page)
+            assert rv.status_code == 200, f"{page} 返回 {rv.status_code}"
+            html = rv.get_data(as_text=True)
+            assert 'sidebar' in html or '导航菜单' in html, f"{page} 缺少侧边栏"
+
+    def test_notification_badge(self, client):
+        """通知徽章元素存在"""
+        rv = client.get('/')
+        html = rv.get_data(as_text=True)
+        assert 'notifBadge' in html or 'notif-badge' in html
+
+    def test_export_button_workers(self, client):
+        """工人页面有导出按钮"""
+        rv = client.get('/workers')
+        html = rv.get_data(as_text=True)
+        assert 'exportCSV' in html or '导出' in html
+
+    def test_export_button_suppliers(self, client):
+        """供应商页面有导出按钮"""
+        rv = client.get('/suppliers')
+        html = rv.get_data(as_text=True)
+        assert 'exportCSV' in html or '导出' in html
+
+    def test_export_button_equipment(self, client):
+        """设备页面有导出按钮"""
+        rv = client.get('/equipment')
+        html = rv.get_data(as_text=True)
+        assert 'exportCSV' in html or '导出' in html
+
+class TestCSVExport:
+    """CSV导出功能测试"""
+
+    def test_export_workers_csv(self, client):
+        """工人数据CSV导出"""
+        rv = client.get('/api/export/csv/workers')
+        assert rv.status_code == 200
+        assert rv.content_type.startswith('text/csv')
+
+    def test_export_suppliers_csv(self, client):
+        """供应商数据CSV导出"""
+        rv = client.get('/api/export/csv/suppliers')
+        assert rv.status_code == 200
+        assert rv.content_type.startswith('text/csv')
+
+    def test_export_equipment_csv(self, client):
+        """设备数据CSV导出"""
+        rv = client.get('/api/export/csv/equipment')
+        assert rv.status_code == 200
+        assert rv.content_type.startswith('text/csv')
+
+    def test_export_invalid_table(self, client):
+        """不支持的导出表返回错误"""
+        rv = client.get('/api/export/csv/invalid_table')
+        assert rv.status_code == 400

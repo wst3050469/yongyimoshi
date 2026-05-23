@@ -1,0 +1,53 @@
+<!-- 侧边栏导航 (全局) -->
+<button class="hamburger-btn-fixed" onclick="toggleSidebar()" title="导航菜单" style="position:fixed;top:10px;left:10px;z-index:998;background:rgba(26,82,118,0.9);border:1px solid rgba(255,255,255,0.3);color:white;font-size:1.2rem;cursor:pointer;padding:6px 12px;border-radius:4px;line-height:1;display:flex;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);">☰</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <h3>🏗️ 导航菜单</h3>
+        <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-section-title">📋 施工管理</div>
+        <a class="sidebar-link" href="/" onclick="closeSidebarAndGo(this)"><span class="link-icon">🏠</span>首页面板</a>
+        <a class="sidebar-link" href="/phases" onclick="closeSidebarAndGo(this)"><span class="link-icon">🔄</span>工序流转</a>
+        <a class="sidebar-link" href="/environment" onclick="closeSidebarAndGo(this)"><span class="link-icon">🌡️</span>环境监测</a>
+        <a class="sidebar-link" href="/acceptance" onclick="closeSidebarAndGo(this)"><span class="link-icon">✅</span>验收管理</a>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-section-title">📦 资源管理</div>
+        <a class="sidebar-link" href="/workers" onclick="closeSidebarAndGo(this)"><span class="link-icon">👷</span>工人管理</a>
+        <a class="sidebar-link" href="/suppliers" onclick="closeSidebarAndGo(this)"><span class="link-icon">🏢</span>供应商</a>
+        <a class="sidebar-link" href="/equipment" onclick="closeSidebarAndGo(this)"><span class="link-icon">🔧</span>设备管理</a>
+        <a class="sidebar-link" href="/subcontractors" onclick="closeSidebarAndGo(this)"><span class="link-icon">🤝</span>分包商</a>
+        <a class="sidebar-link" href="/purchase-requests" onclick="closeSidebarAndGo(this)"><span class="link-icon">📦</span>材料申购</a>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-section-title">📋 质量管理</div>
+        <a class="sidebar-link" href="/safety" onclick="closeSidebarAndGo(this)"><span class="link-icon">⚠️</span>安全检查</a>
+        <a class="sidebar-link" href="/documents" onclick="closeSidebarAndGo(this)"><span class="link-icon">📄</span>文档中心</a>
+        <a class="sidebar-link" href="/analytics" onclick="closeSidebarAndGo(this)"><span class="link-icon">📈</span>数据分析</a>
+        <a class="sidebar-link" href="/calendar" onclick="closeSidebarAndGo(this)"><span class="link-icon">📅</span>日历</a>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-section-title">⚙️ 系统</div>
+        <a class="sidebar-link" href="/notifications" onclick="closeSidebarAndGo(this)"><span class="link-icon">🔔</span>通知中心</a>
+        <a class="sidebar-link" href="/templates" onclick="closeSidebarAndGo(this)"><span class="link-icon">📋</span>项目模板</a>
+        <a class="sidebar-link" href="/admin" onclick="closeSidebarAndGo(this)"><span class="link-icon">⚙️</span>管理员</a>
+        <a class="sidebar-link" href="/api/docs-page" onclick="closeSidebarAndGo(this)"><span class="link-icon">📖</span>API文档</a>
+    </div>
+    <div class="sidebar-footer">永颐无机磨石 v4.0.0 | 施工管理平台</div>
+</nav>
+
+<script>
+function toggleSidebar() {
+    var s=document.getElementById('sidebar'),o=document.getElementById('sidebarOverlay');
+    if(s)s.classList.toggle('open'); if(o)o.classList.toggle('active');
+}
+function closeSidebarAndGo(el) {
+    toggleSidebar(); var href=el.getAttribute('href');
+    if(href&&href!=='#') setTimeout(function(){window.location.href=href},150);
+    return false;
+}
+(function(){var p=window.location.pathname;
+document.querySelectorAll('.sidebar-link').forEach(function(l){var h=l.getAttribute('href');if(h&&p===h)l.classList.add('active')});})();
+</script>

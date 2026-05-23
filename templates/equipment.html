@@ -24,6 +24,7 @@
     </style>
 </head>
 <body>
+{% include 'sidebar.html' %}
 <header class="app-header no-print">
     <h1>🔧 设备管理</h1>
     <div class="subtitle">施工设备 · 工具管理 · 使用追踪 | <a href="/" style="color:white;">← 返回主平台</a></div>
@@ -34,6 +35,7 @@
         <h2 style="margin:0;">设备清单 <span id="eqCount" style="font-weight:400;font-size:0.9rem;color:#888;"></span></h2>
         <div class="action-bar" style="margin:0;">
             <button class="btn btn-primary" onclick="openModal()">➕ 添加设备</button>
+            <button class="btn-export" onclick="exportCSV('equipment')">📥 导出CSV</button>
         </div>
     </div>
     <div id="eqList" class="eq-grid"><p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">加载中...</p></div>
@@ -169,4 +171,9 @@ function editEquipment(eid) {
 function deleteEquipment(eid) { if(!confirm('确定删除？')) return; fetch(`/api/equipment/${eid}`,{method:'DELETE'}).then(()=>{showToast('🗑️ 已删除');loadEquipment();}); }
 document.querySelectorAll('.modal-overlay').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); }));
 document.addEventListener('DOMContentLoaded', loadEquipment);
+// CSV导出
+function exportCSV(table) {
+    window.location.href = "/api/export/csv/" + table;
+}
+
 </script></body></html>

@@ -26,6 +26,7 @@
     </style>
 </head>
 <body>
+{% include 'sidebar.html' %}
 <header class="app-header no-print">
     <h1>🏢 供应商管理</h1>
     <div class="subtitle">材料供应商 · 报价追踪 · 价格对比 | <a href="/" style="color:white;">← 返回主平台</a></div>
@@ -36,6 +37,7 @@
         <h2 style="margin:0;">供应商名录 <span id="supplierCount" style="font-weight:400;font-size:0.9rem;color:#888;"></span></h2>
         <div class="action-bar no-print" style="margin:0;">
             <button class="btn btn-primary" onclick="openAddModal()">➕ 新增供应商</button>
+            <button class="btn-export" onclick="exportCSV('suppliers')">📥 导出CSV</button>
         </div>
     </div>
 
@@ -291,6 +293,11 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 });
 
 document.addEventListener('DOMContentLoaded', loadSuppliers);
+// CSV导出
+function exportCSV(table) {
+    window.location.href = "/api/export/csv/" + table;
+}
+
 </script>
 </body>
 </html>

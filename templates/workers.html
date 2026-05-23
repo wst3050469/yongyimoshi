@@ -23,6 +23,7 @@
     </style>
 </head>
 <body>
+{% include 'sidebar.html' %}
 <header class="app-header no-print">
     <h1>👷 工人与班组管理</h1>
     <div class="subtitle">施工团队 · 班组分配 · 工时记录 | <a href="/" style="color:white;">← 返回主平台</a></div>
@@ -33,6 +34,7 @@
     <div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button class="btn btn-primary" onclick="openWorkerModal()">➕ 添加工人</button>
         <button class="btn btn-success" onclick="openTeamModal()">👥 新建班组</button>
+        <button class="btn-export" onclick="exportCSV('workers')">📥 导出CSV</button>
         <span style="flex:1;"></span>
         <span id="workerCount" style="font-size:0.85rem;color:#888;"></span>
     </div>
@@ -288,6 +290,11 @@ document.addEventListener('DOMContentLoaded', function() {
     loadTeams();
     loadWorkers();
 });
+// CSV导出
+function exportCSV(table) {
+    window.location.href = "/api/export/csv/" + table;
+}
+
 </script>
 </body>
 </html>

@@ -1416,7 +1416,7 @@ def api_acceptance_item_update(item_id):
 def api_export_csv(table_name):
     """导出CSV数据"""
     project_id = request.args.get('project_id', 0, type=int)
-    allowed_tables = ['logs', 'materials', 'quality', 'budget', 'work_hours', 'curing']
+    allowed_tables = ['logs', 'materials', 'quality', 'budget', 'work_hours', 'curing', 'workers', 'suppliers', 'equipment']
     if table_name not in allowed_tables:
         return api_error(f"不支持的表: {table_name}，支持: {', '.join(allowed_tables)}")
 
@@ -1429,6 +1429,8 @@ def api_export_csv(table_name):
         'logs': '施工日志', 'materials': '材料记录',
         'quality': '质量检测', 'budget': '成本预算',
         'work_hours': '工时记录', 'curing': '养护记录',
+        'workers': '工人花名册', 'suppliers': '供应商清单',
+        'equipment': '设备清单',
     }
     filename = f"{filename_map.get(table_name, table_name)}_{datetime.now().strftime('%Y%m%d')}.csv"
 

@@ -2481,6 +2481,26 @@ def export_to_csv(project_id: int, table_name: str) -> str:
                 FROM curing_records JOIN projects p ON curing_records.project_id = p.id
                 ORDER BY record_date
             """).fetchall()
+    elif table_name == 'workers':
+        rows = cursor.execute("""
+            SELECT w.name as 姓名, w.role as 角色, w.phone as 电话,
+                   w.hourly_rate as 时薪, t.name as 班组, w.notes as 备注
+            FROM workers w LEFT JOIN teams t ON w.team_id = t.id
+            ORDER BY w.name
+        """).fetchall()
+    elif table_name == 'suppliers':
+        rows = cursor.execute("""
+            SELECT s.name as 供应商名称, s.contact_person as 联系人, s.phone as 电话,
+                   s.address as 地址, s.materials as 供应材料, s.rating as 评分, s.notes as 备注
+            FROM suppliers s ORDER BY s.name
+        """).fetchall()
+    elif table_name == 'equipment':
+        rows = cursor.execute("""
+            SELECT e.name as 设备名称, e.type as 类型, e.model as 型号,
+                   e.quantity as 数量, e.unit as 单位, e.status as 状态,
+                   e.next_maintenance as 下次保养
+            FROM equipment e ORDER BY e.name
+        """).fetchall()
     else:
         conn.close()
         return ""
