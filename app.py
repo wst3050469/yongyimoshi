@@ -22,7 +22,7 @@ from database import (
     get_quality_tests, save_quality_tests,
     get_dashboard_data, generate_report,
     add_material_record, get_material_inventory, get_material_records,
-    export_project_data, backup_database,
+    export_project_data, backup_database, restore_database, get_backup_list,
     add_photo, get_photos, get_photo_by_id, delete_photo,
     get_timeline_data,
     get_user_by_username, get_user_by_id, get_users,
@@ -611,6 +611,29 @@ def api_import():
 def api_backup():
     path = backup_database()
     return jsonify({"status": "ok", "backup_path": path})
+
+
+@app.route('/api/backup/list', methods=['GET'])
+@login_required
+def api_backup_list():
+    backups = get_backup_list()
+    return jsonify(backups)
+
+
+@app.route('/api/restore', methods=['POST'])
+@login_required
+@admin_required
+def api_restore():
+    """从备份文件恢复数据库"""
+    data = request.get_json() or {}
+    backup_path = data.get('backup_path', '')
+    if not backup_path:
+        return api_error("请指定备份文件路径")
+
+    result = restore_database(backup_path)
+    if 'error' in result:
+        return api_error(result['error'])
+    return jsonify(result)
 
 
 # ============================================================
@@ -1855,7 +1878,9 @@ def api_search():
 
 @app.errorhandler(404)
 def not_found(e):
-    return api_error("接口不存在", code=404)
+    if request.path.startswith('/api/'):
+        return api_error("接口不存在", code=404)
+    return render_template('404.html'), 404
 
 @app.errorhandler(405)
 def method_not_allowed(e):
@@ -1863,15 +1888,21 @@ def method_not_allowed(e):
 
 @app.errorhandler(500)
 def server_error(e):
-    return api_error("服务器内部错误", code=500)
+    if request.path.startswith('/api/'):
+        return api_error("服务器内部错误", code=500)
+    return render_template('500.html'), 500
 
 @app.errorhandler(401)
 def unauthorized(e):
-    return api_error("未登录，请先登录", code=401)
+    if request.path.startswith('/api/'):
+        return api_error("未登录，请先登录", code=401)
+    return render_template('404.html'), 401
 
 @app.errorhandler(403)
 def forbidden(e):
-    return api_error("权限不足", code=403)
+    if request.path.startswith('/api/'):
+        return api_error("权限不足", code=403)
+    return render_template('404.html'), 403
 
 if __name__ == '__main__':
     # 初始化数据库并创建默认管理员

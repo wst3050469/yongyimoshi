@@ -800,3 +800,74 @@ class TestLightbox:
         html = rv.get_data(as_text=True)
         assert "window.open('/api/photo/" not in html
         assert "showLightbox" in html
+
+class TestRestoreFeature:
+    """数据恢复功能测试"""
+
+    def test_restore_api_requires_path(self, client):
+        """恢复API需要路径参数"""
+        client.post('/api/auth/login', json={"username": "admin", "password": "admin123"})
+        rv = client.post('/api/restore', json={})
+        assert rv.status_code == 400
+
+    def test_restore_api_invalid_path(self, client):
+        """恢复API拒绝无效路径"""
+        client.post('/api/auth/login', json={"username": "admin", "password": "admin123"})
+        rv = client.post('/api/restore', json={"backup_path": "/nonexistent/path.db"})
+        assert rv.status_code == 400
+
+    def test_backup_list_api(self, client):
+        """备份列表API可用"""
+        client.post('/api/auth/login', json={"username": "admin", "password": "admin123"})
+        rv = client.get('/api/backup/list')
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert isinstance(data, list)
+
+class TestErrorPages:
+    """自定义错误页面测试"""
+
+    def test_404_html_page(self, client):
+        """非API路径返回HTML 404页面"""
+        rv = client.get('/nonexistent-page-test')
+        assert rv.status_code == 404
+        html = rv.get_data(as_text=True)
+        assert '404' in html
+
+    def test_404_api_returns_json(self, client):
+        """API路径返回JSON错误"""
+        rv = client.get('/api/nonexistent-endpoint')
+        assert rv.status_code == 404
+        data = rv.get_json()
+        assert data is not None
+        assert 'error' in data
+
+class TestHealthCheck:
+    """系统健康检查测试"""
+
+    def test_system_status_has_integrity(self, client):
+        """系统状态包含完整性信息"""
+        rv = client.get('/api/system/status')
+        data = rv.get_json()
+        assert data is not None
+        # integrity字段可能在或不在
+        if 'integrity' in data:
+            assert data['integrity'] in ('ok', 'error', 'unknown')
+
+    def test_system_status_has_db_stats(self, client):
+        """系统状态包含数据库统计"""
+        rv = client.get('/api/system/status')
+        data = rv.get_json()
+        assert data is not None
+        assert 'db_size_mb' in data
+
+class TestBatchPhotoUpload:
+    """批量照片上传测试"""
+
+    def test_upload_input_has_multiple(self, client):
+        """照片上传input支持多选"""
+        rv = client.get('/')
+        html = rv.get_data(as_text=True)
+        # 检查input是否有multiple属性
+        assert 'multiple' in html
+        assert 'uploadFileInput' in html

@@ -2625,6 +2625,80 @@ def backup_database() -> str:
     return backup_path
 
 
+def restore_database(backup_path: str) -> Dict:
+    """从备份文件恢复数据库
+
+    参数:
+        backup_path: 备份文件路径
+
+    返回:
+        {"status": "ok"} 或 {"error": "..."}
+    """
+    import shutil
+    import os
+
+    if not os.path.exists(backup_path):
+        return {"error": f"备份文件不存在: {backup_path}"}
+
+    if not backup_path.endswith('.db'):
+        return {"error": "无效的备份文件"}
+
+    if not os.path.isfile(backup_path):
+        return {"error": "路径不是文件"}
+
+    try:
+        # 关闭当前连接
+        conn = get_db()
+        conn.close()
+
+        # 先备份当前数据库（以防恢复出错）
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pre_restore_backup = DB_PATH + f".pre_restore_{timestamp}"
+        shutil.copy2(DB_PATH, pre_restore_backup)
+
+        # 恢复
+        shutil.copy2(backup_path, DB_PATH)
+
+        # 验证恢复后的数据库
+        test_conn = sqlite3.connect(DB_PATH)
+        cursor = test_conn.cursor()
+        cursor.execute("PRAGMA integrity_check")
+        result = cursor.fetchone()[0]
+        test_conn.close()
+
+        if result != "ok":
+            # 恢复失败，回滚
+            shutil.copy2(pre_restore_backup, DB_PATH)
+            return {"error": f"数据库完整性检查失败: {result}"}
+
+        return {"status": "ok", "pre_restore_backup": pre_restore_backup}
+
+    except Exception as e:
+        return {"error": f"恢复失败: {str(e)}"}
+
+
+def get_backup_list() -> List[Dict]:
+    """获取备份文件列表"""
+    backup_dir = os.path.join(os.path.dirname(__file__), 'data', 'backups')
+    if not os.path.exists(backup_dir):
+        return []
+
+    backups = []
+    for f in sorted(os.listdir(backup_dir), reverse=True):
+        if f.endswith('.db') and f.startswith('yongyi_backup_'):
+            path = os.path.join(backup_dir, f)
+            size_kb = round(os.path.getsize(path) / 1024, 1)
+            # 从文件名解析时间
+            parts = f.replace('yongyi_backup_', '').replace('.db', '')
+            backups.append({
+                "filename": f,
+                "path": path,
+                "size_kb": size_kb,
+                "created_at": parts
+            })
+    return backups
+
+
 # ============================================================
 # 施工照片管理
 # ============================================================
@@ -3313,3 +3387,36 @@ def update_phase_status(project_id: int, phase_name: str, new_status: str) -> Di
         "new_status": new_status,
         "progress": f"{completed_count}/{total_count}",
     }
+
+
+def check_database_integrity() -> Dict:
+    """检查数据库完整性"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA integrity_check")
+        result = cursor.fetchone()[0]
+        conn.close()
+        return {"status": "ok" if result == "ok" else "error", "detail": result}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+
+def get_database_stats_detailed() -> Dict:
+    """获取详细的数据库统计"""
+    conn = get_db()
+    cursor = conn.cursor()
+    stats = {
+        "db_size_mb": round(os.path.getsize(DB_PATH) / (1024 * 1024), 2) if os.path.exists(DB_PATH) else 0,
+        "table_count": 0,
+        "index_count": 0,
+    }
+    try:
+        cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+        stats["table_count"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='index'")
+        stats["index_count"] = cursor.fetchone()[0]
+    except:
+        pass
+    conn.close()
+    return stats

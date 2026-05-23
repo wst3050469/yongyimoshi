@@ -1506,10 +1506,11 @@ function showPhotoUploadDialog() {
                 <input type="text" id="uploadDesc" placeholder="如: 基层清理完成" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
             </div>
             <div class="form-group">
-                <label>选择照片</label>
-                <input type="file" id="uploadFileInput" accept="image/*" style="width:100%;padding:8px;">
-                <div id="uploadPreview" style="margin-top:8px;max-width:100%;max-height:200px;display:none;">
-                    <img id="previewImg" style="max-width:100%;max-height:200px;border-radius:6px;">
+                <label>选择照片（可多选）</label>
+                <input type="file" id="uploadFileInput" accept="image/*" multiple style="width:100%;padding:8px;">
+                <div id="uploadPreview" style="margin-top:8px;display:none;">
+                    <div id="previewList" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+                    <div style="font-size:0.75rem;color:#888;margin-top:4px;" id="previewCount"></div>
                 </div>
             </div>
             <div style="display:flex;gap:8px;margin-top:16px;">
@@ -1525,24 +1526,91 @@ function showPhotoUploadDialog() {
 
     // 预览
     document.getElementById('uploadFileInput').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = function(ev) {
-                document.getElementById('previewImg').src = ev.target.result;
-                document.getElementById('uploadPreview').style.display = 'block';
-            };
-            reader.readAsDataURL(file);
+        const files = e.target.files;
+        const previewList = document.getElementById('previewList');
+        const previewCount = document.getElementById('previewCount');
+        previewList.innerHTML = '';
+        if (files.length > 0) {
+            previewCount.textContent = '已选择 ' + files.length + ' 张照片';
+            Array.from(files).slice(0, 6).forEach(function(file) {
+                const reader = new FileReader();
+                reader.onload = function(ev) {
+                    const thumb = document.createElement('img');
+                    thumb.src = ev.target.result;
+                    thumb.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:6px;border:2px solid #e0e0e0;';
+                    previewList.appendChild(thumb);
+                };
+                reader.readAsDataURL(file);
+            });
+            if (files.length > 6) {
+                previewCount.textContent += '（显示前6张）';
+            }
+            document.getElementById('uploadPreview').style.display = 'block';
         }
     });
 }
 
 function submitPhotoUpload() {
     const fileInput = document.getElementById('uploadFileInput');
-    const file = fileInput.files[0];
-    if (!file) {
+    const files = fileInput.files;
+    const desc = document.getElementById('uploadDesc').value;
+    const phase = document.getElementById('uploadPhase').value;
+
+    if (files.length === 0) {
         showToast('⚠️ 请选择照片', 'info');
         return;
+    }
+
+    let uploaded = 0;
+    let failed = 0;
+    const total = files.length;
+    const btn = document.querySelector('[onclick="submitPhotoUpload()"]');
+    if (btn) btn.disabled = true;
+
+    function uploadNext(index) {
+        if (index >= total) {
+            if (btn) btn.disabled = false;
+            if (failed === 0) {
+                showToast('📸 ' + uploaded + ' 张照片上传成功');
+            } else {
+                showToast('📸 ' + uploaded + ' 张成功，' + failed + ' 张失败', 'info');
+            }
+            // 关闭对话框
+            const dialog = document.querySelector('[style*="fixed"][style*="background:rgba(0,0,0,0.5)"]');
+            if (dialog) dialog.remove();
+            loadPhotos();
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', files[index]);
+        formData.append('project_id', currentProjectId);
+        formData.append('phase', phase);
+        formData.append('description', desc || files[index].name);
+
+        fetch('/api/photos', {
+            method: 'POST',
+            body: formData
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.status === 'uploaded' || data.photo_id) {
+                uploaded++;
+            } else {
+                failed++;
+            }
+            const pct = Math.round((index + 1) / total * 100);
+            if (btn) btn.textContent = '📤 上传中 ' + pct + '% (' + (index+1) + '/' + total + ')';
+            uploadNext(index + 1);
+        })
+        .catch(function() {
+            failed++;
+            uploadNext(index + 1);
+        });
+    }
+
+    uploadNext(0);
+}
     }
 
     const reader = new FileReader();

@@ -112,9 +112,11 @@ def update_config(section: str, updates: Dict) -> bool:
 def get_system_status() -> Dict:
     """获取系统运行状态"""
     import time
-    from database import get_db_stats
+    from database import get_db_stats, check_database_integrity, get_database_stats_detailed
 
     db_stats = get_db_stats()
+    db_detail = get_database_stats_detailed()
+    integrity = check_database_integrity()
 
     # 系统启动时间 (如果存在pid文件)
     pid_file = os.path.join(os.path.dirname(__file__), '.app.pid')
@@ -140,6 +142,9 @@ def get_system_status() -> Dict:
                            if k in ["projects","daily_logs","quality_tests",
                                    "checklist_state","material_records","photos"]),
         "config_sections": list(config.keys()),
+        "integrity": integrity.get("status", "unknown"),
+        "db_tables_count": db_detail.get("table_count", 0),
+        "db_indexes_count": db_detail.get("index_count", 0),
     }
 
 
