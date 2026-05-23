@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设备管理 - 永颐施工平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .eq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+        .eq-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 14px; }
+        .eq-card h3 { margin: 0 0 6px; font-size: 1rem; }
+        .eq-card .info { font-size: 0.82rem; color: #666; line-height: 1.6; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .status-可用 { background: #e8f5e9; color: #2e7d32; }
+        .status-使用中 { background: #e3f2fd; color: #1565c0; }
+        .status-维修中 { background: #fff3e0; color: #e65100; }
+        .status-已报废 { background: #fce4ec; color: #c62828; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 500px; width: 90%; max-height: 85vh; overflow-y: auto; }
+        .modal .form-row { margin-bottom: 12px; }
+        .modal label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 4px; }
+        .modal input, .modal select, .modal textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+<header class="app-header no-print">
+    <h1>🔧 设备管理</h1>
+    <div class="subtitle">施工设备 · 工具管理 · 使用追踪 | <a href="/" style="color:white;">← 返回主平台</a></div>
+</header>
+
+<main class="main-content">
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <h2 style="margin:0;">设备清单 <span id="eqCount" style="font-weight:400;font-size:0.9rem;color:#888;"></span></h2>
+        <div class="action-bar" style="margin:0;">
+            <button class="btn btn-primary" onclick="openModal()">➕ 添加设备</button>
+        </div>
+    </div>
+    <div id="eqList" class="eq-grid"><p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">加载中...</p></div>
+    <div class="card">
+        <h2>📋 最近设备使用记录</h2>
+        <div id="usageList" style="font-size:0.85rem;"><p style="color:#999;">加载中...</p></div>
+    </div>
+
+    <div class="modal-overlay" id="eqModal">
+        <div class="modal">
+            <h2 id="modalTitle">➕ 添加设备</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row"><label>设备名称 *</label><input id="eq_name"></div>
+                <div class="form-row">
+                    <label>类型</label>
+                    <select id="eq_type">
+                        <option value="搅拌设备">搅拌设备</option>
+                        <option value="打磨设备">打磨设备</option>
+                        <option value="切割设备">切割设备</option>
+                        <option value="喷涂设备">喷涂设备</option>
+                        <option value="检测仪器">检测仪器</option>
+                        <option value="手动工具">手动工具</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row"><label>型号</label><input id="eq_model"></div>
+                <div class="form-row"><label>数量</label><input id="eq_qty" type="number" value="1"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row"><label>单位</label><input id="eq_unit" value="台"></div>
+                <div class="form-row">
+                    <label>状态</label>
+                    <select id="eq_status">
+                        <option value="可用">可用</option>
+                        <option value="使用中">使用中</option>
+                        <option value="维修中">维修中</option>
+                        <option value="已报废">已报废</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row"><label>购入日期</label><input id="eq_purchase" type="date"></div>
+                <div class="form-row"><label>下次保养</label><input id="eq_maint" type="date"></div>
+            </div>
+            <div class="form-row"><label>备注</label><input id="eq_notes"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+                <button class="btn" onclick="closeModal()" style="background:#eee;">取消</button>
+                <button class="btn btn-primary" onclick="saveEquipment()">💾 保存</button>
+            </div>
+        </div>
+    </div>
+</main>
+<script>
+let editingId = null;
+function loadEquipment() {
+    fetch('/api/equipment').then(r=>r.json()).then(list => {
+        document.getElementById('eqCount').textContent = `(共${list.length}件)`;
+        const div = document.getElementById('eqList');
+        if (list.length===0) { div.innerHTML='<p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">暂无设备</p>'; return; }
+        div.innerHTML = list.map(e => `
+            <div class="eq-card">
+                <div style="display:flex;justify-content:space-between;align-items:start;">
+                    <h3>${e.name}</h3>
+                    <span class="status-badge status-${e.status}">${e.status}</span>
+                </div>
+                <div class="info">
+                    <div>📂 ${e.type||'-'} | 📐 ${e.model||'-'}</div>
+                    <div>📦 ${e.quantity}${e.unit} | 🏷️ ${e.purchase_date||'未记录'}</div>
+                    ${e.next_maintenance ? '<div>🔧 下次保养: '+e.next_maintenance+'</div>' : ''}
+                    <div>📊 使用 ${e.usage_count||0} 次</div>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:6px;">
+                    <button class="btn" onclick="editEquipment(${e.id})" style="font-size:0.8rem;padding:4px 12px;background:#e3f2fd;">✏️</button>
+                    <button class="btn" onclick="deleteEquipment(${e.id})" style="font-size:0.8rem;padding:4px 12px;background:#fce4ec;color:#c62828;">🗑️</button>
+                </div>
+            </div>
+        `).join('');
+    });
+    loadUsage();
+}
+function loadUsage() {
+    fetch('/api/equipment-usage').then(r=>r.json()).then(rows => {
+        const div = document.getElementById('usageList');
+        if (rows.length===0) { div.innerHTML='<p style="color:#999;">暂无使用记录</p>'; return; }
+        div.innerHTML = '<table class="result-table"><thead><tr><th>设备</th><th>项目</th><th>数量</th><th>开始</th><th>结束</th><th>操作人</th></tr></thead><tbody>'+
+            rows.slice(0,15).map(u => '<tr><td>'+u.equipment_name+'</td><td>'+u.project_name+'</td><td>'+u.quantity_used+'</td><td>'+u.start_date+'</td><td>'+(u.end_date||'进行中')+'</td><td>'+(u.operator||'-')+'</td></tr>').join('')+
+            '</tbody></table>';
+    });
+}
+function openModal() {
+    editingId = null; document.getElementById('modalTitle').textContent = '➕ 添加设备';
+    ['eq_name','eq_model','eq_notes','eq_purchase','eq_maint'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('eq_qty').value = '1'; document.getElementById('eq_unit').value = '台';
+    document.getElementById('eq_type').value = '搅拌设备'; document.getElementById('eq_status').value = '可用';
+    document.getElementById('eqModal').classList.add('active');
+}
+function closeModal() { document.getElementById('eqModal').classList.remove('active'); }
+function saveEquipment() {
+    const data = {
+        name: document.getElementById('eq_name').value.trim(),
+        type: document.getElementById('eq_type').value,
+        model: document.getElementById('eq_model').value.trim(),
+        quantity: parseInt(document.getElementById('eq_qty').value) || 1,
+        unit: document.getElementById('eq_unit').value.trim(),
+        status: document.getElementById('eq_status').value,
+        purchase_date: document.getElementById('eq_purchase').value,
+        next_maintenance: document.getElementById('eq_maint').value,
+        notes: document.getElementById('eq_notes').value.trim(),
+    };
+    if (!data.name) return showToast('⚠️ 设备名称不能为空', 'warning');
+    const url = editingId ? `/api/equipment/${editingId}` : '/api/equipment';
+    const method = editingId ? 'PUT' : 'POST';
+    fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d => { if (d.status==='ok') { showToast(editingId?'✅ 已更新':'✅ 已添加'); closeModal(); loadEquipment(); } });
+}
+function editEquipment(eid) {
+    fetch(`/api/equipment/${eid}`).then(r=>r.json()).then(e => {
+        editingId = e.id; document.getElementById('modalTitle').textContent = '✏️ 编辑设备';
+        document.getElementById('eq_name').value = e.name||'';
+        document.getElementById('eq_type').value = e.type||'搅拌设备';
+        document.getElementById('eq_model').value = e.model||'';
+        document.getElementById('eq_qty').value = e.quantity||1;
+        document.getElementById('eq_unit').value = e.unit||'台';
+        document.getElementById('eq_status').value = e.status||'可用';
+        document.getElementById('eq_purchase').value = e.purchase_date||'';
+        document.getElementById('eq_maint').value = e.next_maintenance||'';
+        document.getElementById('eq_notes').value = e.notes||'';
+        document.getElementById('eqModal').classList.add('active');
+    });
+}
+function deleteEquipment(eid) { if(!confirm('确定删除？')) return; fetch(`/api/equipment/${eid}`,{method:'DELETE'}).then(()=>{showToast('🗑️ 已删除');loadEquipment();}); }
+document.querySelectorAll('.modal-overlay').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); }));
+document.addEventListener('DOMContentLoaded', loadEquipment);
+</script></body></html>

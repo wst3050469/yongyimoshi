@@ -1594,6 +1594,20 @@ function saveQualityTests() {
 // ============================================================
 // 初始化
 // ============================================================
+function exportCSV() {
+    const pid = document.getElementById('exportProject').value;
+    const table = document.getElementById('exportTable').value;
+    const url = '/api/export/csv/' + table + '?project_id=' + pid;
+    window.open(url, '_blank');
+}
+
+function loadExportProjects() {
+    fetch('/api/projects').then(r=>r.json()).then(projects => {
+        const sel = document.getElementById('exportProject');
+        sel.innerHTML = '<option value="0">所有项目</option>' + projects.map(p => '<option value="'+p.id+'">'+p.name+'</option>').join('');
+    });
+}
+
 function updateNotifBadge() {
     fetch('/api/notifications/unread-count').then(r=>r.json()).then(d => {
         const badge = document.getElementById('notifBadge');
@@ -1604,7 +1618,7 @@ function updateNotifBadge() {
     });
 }
 setInterval(updateNotifBadge, 30000);
-document.addEventListener('DOMContentLoaded', function() { updateNotifBadge();
+document.addEventListener('DOMContentLoaded', function() { loadExportProjects(); updateNotifBadge();
     initTheme();
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('inputStartDate').value = today;

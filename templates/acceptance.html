@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>验收管理 - 永颐施工平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .acc-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+        .acc-card h3 { margin: 0 0 8px; font-size: 1rem; }
+        .acc-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .result-badge { padding: 3px 14px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; }
+        .result-合格 { background: #e8f5e9; color: #2e7d32; }
+        .result-不合格 { background: #fce4ec; color: #c62828; }
+        .result-待定 { background: #fff3e0; color: #e65100; }
+        .check-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.85rem; }
+        .check-item.pass { color: #2e7d32; }
+        .check-item.fail { color: #c62828; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 550px; width: 90%; max-height: 85vh; overflow-y: auto; }
+        .modal .form-row { margin-bottom: 12px; }
+        .modal label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 4px; }
+        .modal input, .modal select, .modal textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        .export-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+<header class="app-header no-print">
+    <h1>📋 验收管理</h1>
+    <div class="subtitle">基层验收 · 中间验收 · 竣工验收 | <a href="/" style="color:white;">← 返回主平台</a></div>
+</header>
+<main class="main-content">
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <h2 style="margin:0;">验收记录 <span id="accCount" style="font-weight:400;font-size:0.9rem;color:#888;"></span></h2>
+        <div class="export-bar">
+            <select id="projectSelect" style="padding:6px;border:1px solid #ddd;border-radius:6px;min-width:150px;"></select>
+            <button class="btn btn-primary" onclick="openAddModal()">➕ 新建验收</button>
+        </div>
+    </div>
+    <div id="accList"><p style="text-align:center;padding:40px;color:#999;">请选择项目...</p></div>
+
+    <!-- 新建验收弹窗 -->
+    <div class="modal-overlay" id="accModal">
+        <div class="modal">
+            <h2>📋 新建验收</h2>
+            <div class="form-row">
+                <label>项目 *</label>
+                <select id="a_project"></select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row">
+                    <label>验收类型 *</label>
+                    <select id="a_type">
+                        <option value="基层验收">🏗️ 基层验收</option>
+                        <option value="中间验收">🔨 中间验收</option>
+                        <option value="竣工验收">✅ 竣工验收</option>
+                    </select>
+                </div>
+                <div class="form-row"><label>验收日期</label><input id="a_date" type="date"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row"><label>验收人</label><input id="a_inspector"></div>
+                <div class="form-row"><label>评分 (0-100)</label><input id="a_score" type="number" min="0" max="100"></div>
+            </div>
+            <div class="form-row"><label>备注</label><textarea id="a_notes" rows="2"></textarea></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+                <button class="btn" onclick="closeModal()" style="background:#eee;">取消</button>
+                <button class="btn btn-primary" onclick="saveAcceptance()">💾 创建验收</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 验收详情弹窗 -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal">
+            <h2 id="detailTitle">验收详情</h2>
+            <div id="detailContent"></div>
+            <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+                <button class="btn" onclick="closeDetail()" style="background:#eee;">关闭</button>
+            </div>
+        </div>
+    </div>
+</main>
+<script>
+let currentProjectId = 0;
+
+function loadProjects() {
+    fetch('/api/projects').then(r=>r.json()).then(projects => {
+        const sel = document.getElementById('projectSelect');
+        const sel2 = document.getElementById('a_project');
+        sel.innerHTML = '<option value="0">选择项目</option>' + projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        sel2.innerHTML = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        sel.onchange = function() {
+            currentProjectId = parseInt(this.value);
+            loadAcceptances();
+        };
+    });
+}
+
+function loadAcceptances() {
+    const div = document.getElementById('accList');
+    if (!currentProjectId) { div.innerHTML = '<p style="text-align:center;padding:40px;color:#999;">请选择项目...</p>'; return; }
+    fetch(`/api/acceptance?project_id=${currentProjectId}`).then(r=>r.json()).then(list => {
+        document.getElementById('accCount').textContent = `(共${list.length}条)`;
+        if (list.length===0) { div.innerHTML = '<p style="text-align:center;padding:40px;color:#999;">暂无验收记录</p>'; return; }
+        div.innerHTML = list.map(a => {
+            const typeIcons = {'基层验收':'🏗️','中间验收':'🔨','竣工验收':'✅'};
+            return `
+                <div class="acc-card" onclick="showDetail(${a.id})" style="cursor:pointer;">
+                    <div class="acc-header">
+                        <h3>${typeIcons[a.acceptance_type]||'📋'} ${a.acceptance_type}</h3>
+                        <span class="result-badge result-${a.result}">${a.result}</span>
+                    </div>
+                    <div style="font-size:0.85rem;color:#666;">
+                        📅 ${a.check_date} | 👤 ${a.inspector||'未指定'} | ⭐ ${a.score||'未评分'}/100
+                    </div>
+                    ${a.notes ? '<div style="font-size:0.8rem;color:#888;margin-top:4px;">📝 '+a.notes+'</div>' : ''}
+                    <div style="margin-top:6px;display:flex;gap:8px;">
+                        <button class="btn" onclick="event.stopPropagation(); deleteAcc(${a.id})" style="font-size:0.75rem;padding:3px 10px;background:#fce4ec;color:#c62828;">🗑️ 删除</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    });
+}
+
+function showDetail(aid) {
+    fetch(`/api/acceptance/${aid}`).then(r=>r.json()).then(a => {
+        document.getElementById('detailTitle').textContent = `📋 ${a.acceptance_type} - 详情`;
+        const typeIcons = {'基层验收':'🏗️','中间验收':'🔨','竣工验收':'✅'};
+        let html = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:0.85rem;">
+                <div><strong>类型:</strong> ${typeIcons[a.acceptance_type]||''} ${a.acceptance_type}</div>
+                <div><strong>日期:</strong> ${a.check_date}</div>
+                <div><strong>验收人:</strong> ${a.inspector||'-'}</div>
+                <div><strong>评分:</strong> ⭐ ${a.score||'未评分'}/100</div>
+                <div><strong>结果:</strong> <span class="result-badge result-${a.result}">${a.result}</span></div>
+                ${a.defects ? '<div style="grid-column:1/-1;"><strong>缺陷:</strong> '+a.defects+'</div>' : ''}
+            </div>
+            <h4 style="font-size:0.9rem;margin-bottom:8px;">检查项 (${a.items ? a.items.filter(i=>i.is_pass).length : 0}/${a.items ? a.items.length : 0} 通过)</h4>
+        `;
+        if (a.items && a.items.length > 0) {
+            html += a.items.map(item => `
+                <div class="check-item ${item.is_pass ? 'pass' : 'fail'}" style="display:flex;justify-content:space-between;">
+                    <span>${item.is_pass ? '✅' : '⭕'} ${item.item_name}</span>
+                    <span style="font-size:0.8rem;color:#888;">标准: ${item.standard||'-'} ${item.actual_value ? '| 实测: '+item.actual_value : ''}</span>
+                </div>
+            `).join('');
+            html += '<div style="margin-top:10px;font-size:0.8rem;color:#888;">点击下方按钮逐项更新</div>';
+        }
+        document.getElementById('detailContent').innerHTML = html;
+        document.getElementById('detailModal').classList.add('active');
+    });
+}
+
+function closeDetail() { document.getElementById('detailModal').classList.remove('active'); }
+
+function openAddModal() {
+    document.getElementById('a_date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('a_inspector').value = '';
+    document.getElementById('a_score').value = '';
+    document.getElementById('a_notes').value = '';
+    document.getElementById('accModal').classList.add('active');
+}
+
+function closeModal() { document.getElementById('accModal').classList.remove('active'); }
+
+function saveAcceptance() {
+    const data = {
+        project_id: parseInt(document.getElementById('a_project').value),
+        acceptance_type: document.getElementById('a_type').value,
+        check_date: document.getElementById('a_date').value,
+        inspector: document.getElementById('a_inspector').value.trim(),
+        score: parseFloat(document.getElementById('a_score').value) || 0,
+        notes: document.getElementById('a_notes').value.trim(),
+    };
+    if (!data.project_id || !data.acceptance_type) return showToast('⚠️ 请选择项目和验收类型', 'warning');
+    fetch('/api/acceptance', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d => {
+        if (d.status==='ok') { showToast('✅ 验收已创建'); closeModal(); loadAcceptances(); }
+    });
+}
+
+function deleteAcc(aid) { if(!confirm('确定删除？')) return; fetch(`/api/acceptance/${aid}`,{method:'DELETE'}).then(()=>{showToast('🗑️ 已删除');loadAcceptances();}); }
+
+document.querySelectorAll('.modal-overlay').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); }));
+document.addEventListener('DOMContentLoaded', function() { loadProjects(); });
+</script></body></html>

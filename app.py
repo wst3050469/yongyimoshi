@@ -3,7 +3,8 @@
 Flask + SQLite + 29个API端点
 """
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, make_response
+from datetime import datetime
 from validation import (
     validate_project_data, validate_inventory_data,
     validate_required, api_error, api_success, ValidationError,
@@ -952,6 +953,190 @@ def api_notifications_unread_count():
     """未读通知数量（全局首页角标用）"""
     notifs = get_notifications(project_id=0, unread_only=True)
     return jsonify({"count": len(notifs)})
+
+
+# ============================================================
+# 设备管理
+# ============================================================
+
+from database import (
+    add_equipment, get_equipment, update_equipment, delete_equipment,
+    add_equipment_usage, get_equipment_usage,
+    add_acceptance, get_acceptances, get_acceptance,
+    update_acceptance, update_acceptance_item, delete_acceptance,
+    export_to_csv,
+)
+
+
+@app.route('/equipment')
+def equipment_page():
+    """设备管理页面"""
+    return render_template('equipment.html')
+
+
+@app.route('/api/equipment', methods=['GET'])
+def api_equipment_list():
+    return jsonify(get_equipment())
+
+
+@app.route('/api/equipment', methods=['POST'])
+def api_equipment_add():
+    data = request.get_json()
+    if not data or not data.get('name'):
+        return api_error("设备名称不能为空")
+    eid = add_equipment(
+        name=data['name'], type_=data.get('type', ''),
+        model=data.get('model', ''), quantity=int(data.get('quantity', 1)),
+        unit=data.get('unit', '台'), status=data.get('status', '可用'),
+        purchase_date=data.get('purchase_date', ''),
+        next_maintenance=data.get('next_maintenance', ''),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": eid})
+
+
+@app.route('/api/equipment/<int:eid>', methods=['GET'])
+def api_equipment_get(eid):
+    eq = get_equipment(eid)
+    if not eq:
+        return api_error("设备不存在")
+    return jsonify(eq)
+
+
+@app.route('/api/equipment/<int:eid>', methods=['PUT'])
+def api_equipment_update(eid):
+    data = request.get_json() or {}
+    ok = update_equipment(eid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/equipment/<int:eid>', methods=['DELETE'])
+def api_equipment_delete(eid):
+    delete_equipment(eid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/equipment-usage', methods=['GET'])
+def api_equipment_usage_list():
+    project_id = request.args.get('project_id', 0, type=int)
+    return jsonify(get_equipment_usage(project_id))
+
+
+@app.route('/api/equipment-usage', methods=['POST'])
+def api_equipment_usage_add():
+    data = request.get_json()
+    if not data or not data.get('equipment_id') or not data.get('project_id'):
+        return api_error("缺少 equipment_id 或 project_id")
+    uid = add_equipment_usage(
+        equipment_id=int(data['equipment_id']),
+        project_id=int(data['project_id']),
+        quantity_used=int(data.get('quantity_used', 1)),
+        start_date=data.get('start_date', ''),
+        end_date=data.get('end_date', ''),
+        operator=data.get('operator', ''),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": uid})
+
+
+# ============================================================
+# 验收管理
+# ============================================================
+
+@app.route('/acceptance')
+def acceptance_page():
+    """验收管理页面"""
+    return render_template('acceptance.html')
+
+
+@app.route('/api/acceptance', methods=['GET'])
+def api_acceptance_list():
+    project_id = request.args.get('project_id', 0, type=int)
+    if not project_id:
+        return api_error("缺少 project_id")
+    return jsonify(get_acceptances(project_id))
+
+
+@app.route('/api/acceptance', methods=['POST'])
+def api_acceptance_add():
+    data = request.get_json()
+    if not data or not data.get('project_id') or not data.get('acceptance_type'):
+        return api_error("缺少 project_id 或 acceptance_type")
+    aid = add_acceptance(
+        project_id=int(data['project_id']),
+        acceptance_type=data['acceptance_type'],
+        check_date=data.get('check_date', ''),
+        inspector=data.get('inspector', ''),
+        result=data.get('result', '待定'),
+        defects=data.get('defects', ''),
+        score=float(data.get('score', 0)),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": aid})
+
+
+@app.route('/api/acceptance/<int:aid>', methods=['GET'])
+def api_acceptance_get(aid):
+    acc = get_acceptance(aid)
+    if not acc:
+        return api_error("验收记录不存在")
+    return jsonify(acc)
+
+
+@app.route('/api/acceptance/<int:aid>', methods=['PUT'])
+def api_acceptance_update(aid):
+    data = request.get_json() or {}
+    ok = update_acceptance(aid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/acceptance/<int:aid>', methods=['DELETE'])
+def api_acceptance_delete(aid):
+    delete_acceptance(aid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/acceptance/item/<int:item_id>', methods=['PUT'])
+def api_acceptance_item_update(item_id):
+    data = request.get_json() or {}
+    is_pass = 1 if data.get('is_pass') else 0
+    actual_value = data.get('actual_value', '')
+    update_acceptance_item(item_id, is_pass, actual_value)
+    return jsonify({"status": "ok"})
+
+
+# ============================================================
+# CSV 导出
+# ============================================================
+
+@app.route('/api/export/csv/<table_name>')
+def api_export_csv(table_name):
+    """导出CSV数据"""
+    project_id = request.args.get('project_id', 0, type=int)
+    allowed_tables = ['logs', 'materials', 'quality', 'budget', 'work_hours', 'curing']
+    if table_name not in allowed_tables:
+        return api_error(f"不支持的表: {table_name}，支持: {', '.join(allowed_tables)}")
+
+    csv_data = export_to_csv(project_id, table_name)
+    if not csv_data:
+        return api_error("无数据可导出")
+
+    # 中文文件名
+    filename_map = {
+        'logs': '施工日志', 'materials': '材料记录',
+        'quality': '质量检测', 'budget': '成本预算',
+        'work_hours': '工时记录', 'curing': '养护记录',
+    }
+    filename = f"{filename_map.get(table_name, table_name)}_{datetime.now().strftime('%Y%m%d')}.csv"
+
+    from flask import make_response
+    response = make_response(csv_data)
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8-sig'
+    # Use ASCII-only filename for compatibility, encode Chinese in URL
+    safe_filename = f"yongyi_{table_name}_{datetime.now().strftime('%Y%m%d')}.csv"
+    response.headers['Content-Disposition'] = f'attachment; filename={safe_filename}'
+    return response
+
 
 
 # ============================================================

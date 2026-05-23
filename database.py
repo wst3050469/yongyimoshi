@@ -195,6 +195,59 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS equipment (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            type TEXT DEFAULT '',
+            model TEXT DEFAULT '',
+            quantity INTEGER DEFAULT 1,
+            unit TEXT DEFAULT '台',
+            status TEXT DEFAULT '可用',
+            purchase_date TEXT DEFAULT '',
+            next_maintenance TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS equipment_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            equipment_id INTEGER NOT NULL,
+            project_id INTEGER NOT NULL,
+            quantity_used INTEGER DEFAULT 1,
+            start_date TEXT NOT NULL,
+            end_date TEXT DEFAULT '',
+            operator TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE CASCADE,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS acceptance_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            acceptance_type TEXT NOT NULL,
+            check_date TEXT NOT NULL,
+            inspector TEXT DEFAULT '',
+            result TEXT DEFAULT '待定',
+            defects TEXT DEFAULT '',
+            score REAL DEFAULT 0,
+            attachments TEXT DEFAULT '[]',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS acceptance_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            acceptance_id INTEGER NOT NULL,
+            item_name TEXT NOT NULL,
+            standard TEXT DEFAULT '',
+            is_pass INTEGER DEFAULT 0,
+            actual_value TEXT DEFAULT '',
+            FOREIGN KEY (acceptance_id) REFERENCES acceptance_records(id) ON DELETE CASCADE
+        );
     """)
 
     conn.commit()
@@ -1126,6 +1179,384 @@ def create_quality_test_reminder(project_id: int) -> int:
 
 
 # ============================================================
+# 设备管理
+# ============================================================
+
+def add_equipment(name: str, type_: str = "", model: str = "",
+                  quantity: int = 1, unit: str = "台", status: str = "可用",
+                  purchase_date: str = "", next_maintenance: str = "",
+                  notes: str = "") -> int:
+    """添加设备"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO equipment (name, type, model, quantity, unit, status,
+                               purchase_date, next_maintenance, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, type_, model, quantity, unit, status,
+          purchase_date, next_maintenance, notes))
+    eid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return eid
+
+
+def get_equipment(eid: int = 0) -> List[Dict]:
+    """获取设备列表"""
+    conn = get_db()
+    cursor = conn.cursor()
+    if eid:
+        row = cursor.execute("SELECT * FROM equipment WHERE id = ?", (eid,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    rows = cursor.execute("""
+        SELECT e.*, 
+            (SELECT COUNT(*) FROM equipment_usage WHERE equipment_id = e.id) as usage_count
+        FROM equipment e ORDER BY e.type, e.name
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_equipment(eid: int, **kwargs) -> bool:
+    """更新设备信息"""
+    allowed = ['name', 'type', 'model', 'quantity', 'unit', 'status',
+               'purchase_date', 'next_maintenance', 'notes']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [eid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE equipment SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_equipment(eid: int) -> bool:
+    """删除设备"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM equipment_usage WHERE equipment_id = ?", (eid,))
+    cursor.execute("DELETE FROM equipment WHERE id = ?", (eid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def add_equipment_usage(equipment_id: int, project_id: int,
+                        quantity_used: int = 1, start_date: str = "",
+                        end_date: str = "", operator: str = "",
+                        notes: str = "") -> int:
+    """记录设备使用"""
+    if not start_date:
+        start_date = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO equipment_usage (equipment_id, project_id, quantity_used,
+                                     start_date, end_date, operator, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (equipment_id, project_id, quantity_used, start_date, end_date, operator, notes))
+    uid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return uid
+
+
+def get_equipment_usage(project_id: int = 0) -> List[Dict]:
+    """获取设备使用记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    if project_id:
+        rows = cursor.execute("""
+            SELECT u.*, e.name as equipment_name, e.type as equipment_type,
+                   p.name as project_name
+            FROM equipment_usage u
+            JOIN equipment e ON u.equipment_id = e.id
+            JOIN projects p ON u.project_id = p.id
+            WHERE u.project_id = ?
+            ORDER BY u.start_date DESC
+        """, (project_id,)).fetchall()
+    else:
+        rows = cursor.execute("""
+            SELECT u.*, e.name as equipment_name, e.type as equipment_type,
+                   p.name as project_name
+            FROM equipment_usage u
+            JOIN equipment e ON u.equipment_id = e.id
+            JOIN projects p ON u.project_id = p.id
+            ORDER BY u.start_date DESC LIMIT 100
+        """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ============================================================
+# 验收管理
+# ============================================================
+
+def add_acceptance(project_id: int, acceptance_type: str,
+                   check_date: str = "", inspector: str = "",
+                   result: str = "待定", defects: str = "",
+                   score: float = 0, notes: str = "") -> int:
+    """创建验收记录"""
+    if not check_date:
+        check_date = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO acceptance_records (project_id, acceptance_type, check_date,
+            inspector, result, defects, score, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (project_id, acceptance_type, check_date, inspector, result, defects, score, notes))
+    aid = cursor.lastrowid
+
+    # 自动创建验收项目（根据验收类型）
+    items = _get_acceptance_default_items(acceptance_type)
+    for item in items:
+        cursor.execute("""
+            INSERT INTO acceptance_items (acceptance_id, item_name, standard)
+            VALUES (?, ?, ?)
+        """, (aid, item['name'], item['standard']))
+
+    conn.commit()
+    conn.close()
+    return aid
+
+
+def _get_acceptance_default_items(acceptance_type: str) -> List[Dict]:
+    """根据验收类型返回默认检查项"""
+    templates = {
+        "基层验收": [
+            {"name": "基层平整度", "standard": "2m靠尺≤3mm"},
+            {"name": "基层强度", "standard": "≥C20, 表面无起砂"},
+            {"name": "基层清洁度", "standard": "无油污、浮灰、松散颗粒"},
+            {"name": "基层含水率", "standard": "≤8%"},
+            {"name": "伸缩缝设置", "standard": "按设计要求留设"},
+        ],
+        "中间验收": [
+            {"name": "抗裂砂浆厚度", "standard": "设计厚度±2mm"},
+            {"name": "钢纤维分布", "standard": "均匀无结团"},
+            {"name": "表面平整度", "standard": "2m靠尺≤3mm"},
+            {"name": "养护时间", "standard": "≥7天"},
+            {"name": "界面处理", "standard": "涂刷均匀无漏涂"},
+        ],
+        "竣工验收": [
+            {"name": "面层平整度", "standard": "2m靠尺≤2mm"},
+            {"name": "面层光泽度", "standard": "≥60°"},
+            {"name": "颜色均匀性", "standard": "无明显色差"},
+            {"name": "硬度测试", "standard": "莫氏硬度≥6"},
+            {"name": "抗渗性能", "standard": "24h无渗水"},
+            {"name": "表面缺陷", "standard": "无裂纹、空鼓、麻面"},
+        ],
+    }
+    return templates.get(acceptance_type, [
+        {"name": "外观质量", "standard": "符合规范要求"},
+        {"name": "尺寸偏差", "standard": "在允许范围内"},
+    ])
+
+
+def get_acceptances(project_id: int) -> List[Dict]:
+    """获取项目的验收记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM acceptance_records WHERE project_id = ?
+        ORDER BY check_date DESC, id DESC
+    """, (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_acceptance(aid: int) -> Optional[Dict]:
+    """获取验收详情（含检查项）"""
+    conn = get_db()
+    cursor = conn.cursor()
+    row = cursor.execute("SELECT * FROM acceptance_records WHERE id = ?", (aid,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    acceptance = dict(row)
+    items = cursor.execute("""
+        SELECT * FROM acceptance_items WHERE acceptance_id = ? ORDER BY id
+    """, (aid,)).fetchall()
+    acceptance['items'] = [dict(r) for r in items]
+    conn.close()
+    return acceptance
+
+
+def update_acceptance_item(item_id: int, is_pass: int, actual_value: str = "") -> bool:
+    """更新验收检查项"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE acceptance_items SET is_pass = ?, actual_value = ? WHERE id = ?
+    """, (is_pass, actual_value, item_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def update_acceptance(aid: int, **kwargs) -> bool:
+    """更新验收记录"""
+    allowed = ['result', 'defects', 'score', 'notes', 'inspector']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [aid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE acceptance_records SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_acceptance(aid: int) -> bool:
+    """删除验收记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM acceptance_items WHERE acceptance_id = ?", (aid,))
+    cursor.execute("DELETE FROM acceptance_records WHERE id = ?", (aid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# CSV/Excel 导出
+# ============================================================
+
+def export_to_csv(project_id: int, table_name: str) -> str:
+    """
+    将项目数据导出为CSV格式
+
+    参数:
+        project_id: 项目ID (0=所有项目)
+        table_name: 表名 (logs, quality, materials, budget, work_hours, curing)
+
+    返回:
+        CSV字符串
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    if table_name == 'logs':
+        if project_id:
+            rows = cursor.execute("""
+                SELECT ld.log_date as 日期, ld.weather as 天气, ld.temperature as 温度,
+                       ld.workers as 工人数, ld.work_content as 施工内容,
+                       ld.materials_used as 材料使用, ld.issues as 问题
+                FROM daily_logs ld WHERE ld.project_id = ? ORDER BY ld.log_date
+            """, (project_id,)).fetchall()
+        else:
+            rows = cursor.execute("""
+                SELECT p.name as 项目, ld.log_date as 日期, ld.weather as 天气,
+                       ld.temperature as 温度, ld.workers as 工人数,
+                       ld.work_content as 施工内容, ld.issues as 问题
+                FROM daily_logs ld JOIN projects p ON ld.project_id = p.id
+                ORDER BY ld.log_date
+            """).fetchall()
+    elif table_name == 'materials':
+        if project_id:
+            rows = cursor.execute("""
+                SELECT mr.material_name as 材料名称, mr.quantity_kg as 数量kg,
+                       mr.quantity_packages as 包装数, mr.unit_price as 单价,
+                       mr.total_cost as 总价, mr.record_date as 记录日期
+                FROM material_records mr WHERE mr.project_id = ? ORDER BY mr.record_date
+            """, (project_id,)).fetchall()
+        else:
+            rows = cursor.execute("""
+                SELECT p.name as 项目, mr.material_name as 材料名称, mr.quantity_kg as 数量kg,
+                       mr.unit_price as 单价, mr.total_cost as 总价, mr.record_date as 记录日期
+                FROM material_records mr JOIN projects p ON mr.project_id = p.id
+                ORDER BY mr.record_date
+            """).fetchall()
+    elif table_name == 'quality':
+        if project_id:
+            rows = cursor.execute("""
+                SELECT qt.test_name as 检测项目, qt.standard_value as 标准值,
+                       qt.actual_value as 实测值, qt.is_pass as 是否合格, qt.test_date as 检测日期
+                FROM quality_tests qt WHERE qt.project_id = ? ORDER BY qt.test_date
+            """, (project_id,)).fetchall()
+        else:
+            rows = cursor.execute("""
+                SELECT p.name as 项目, qt.test_name as 检测项目, qt.standard_value as 标准值,
+                       qt.actual_value as 实测值, qt.is_pass as 是否合格, qt.test_date as 检测日期
+                FROM quality_tests qt JOIN projects p ON qt.project_id = p.id
+                ORDER BY qt.test_date
+            """).fetchall()
+    elif table_name == 'budget':
+        if project_id:
+            rows = cursor.execute("""
+                SELECT category as 类别, planned_amount as 预算金额,
+                       actual_amount as 实际支出, description as 说明
+                FROM budget_items WHERE project_id = ? ORDER BY category
+            """, (project_id,)).fetchall()
+        else:
+            rows = cursor.execute("""
+                SELECT p.name as 项目, category as 类别, planned_amount as 预算金额,
+                       actual_amount as 实际支出
+                FROM budget_items JOIN projects p ON budget_items.project_id = p.id
+                ORDER BY p.name, category
+            """).fetchall()
+    elif table_name == 'work_hours':
+        if project_id:
+            rows = cursor.execute("""
+                SELECT wh.work_date as 日期, w.name as 工人, w.role as 角色,
+                       wh.hours as 工时, wh.work_type as 施工类型
+                FROM work_hours wh JOIN workers w ON wh.worker_id = w.id
+                WHERE wh.project_id = ? ORDER BY wh.work_date
+            """, (project_id,)).fetchall()
+        else:
+            rows = cursor.execute("""
+                SELECT p.name as 项目, wh.work_date as 日期, w.name as 工人,
+                       wh.hours as 工时, wh.work_type as 施工类型
+                FROM work_hours wh JOIN workers w ON wh.worker_id = w.id
+                JOIN projects p ON wh.project_id = p.id
+                ORDER BY wh.work_date
+            """).fetchall()
+    elif table_name == 'curing':
+        if project_id:
+            rows = cursor.execute("""
+                SELECT record_date as 日期, weather as 天气, temp_min as 最低温,
+                       temp_max as 最高温, humidity as 湿度, curing_measure as 养护措施
+                FROM curing_records WHERE project_id = ? ORDER BY record_date
+            """, (project_id,)).fetchall()
+        else:
+            rows = cursor.execute("""
+                SELECT p.name as 项目, record_date as 日期, weather as 天气,
+                       temp_min as 最低温, temp_max as 最高温, curing_measure as 养护措施
+                FROM curing_records JOIN projects p ON curing_records.project_id = p.id
+                ORDER BY record_date
+            """).fetchall()
+    else:
+        conn.close()
+        return ""
+
+    conn.close()
+
+    if not rows:
+        return "无数据"
+
+    # 转为CSV
+    import io
+    import csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    # 头部
+    writer.writerow([d for d in rows[0].keys()])
+    # 数据
+    for r in rows:
+        writer.writerow([str(v) for v in r])
+
+    return output.getvalue()
+
+
+# ============================================================
 # 数据导出
 # ============================================================
 
@@ -1440,6 +1871,12 @@ def optimize_database():
         "CREATE INDEX IF NOT EXISTS idx_budget_category ON budget_items(category)",
         "CREATE INDEX IF NOT EXISTS idx_notifications_project ON notifications(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)",
+        "CREATE INDEX IF NOT EXISTS idx_equipment_type ON equipment(type)",
+        "CREATE INDEX IF NOT EXISTS idx_equipment_status ON equipment(status)",
+        "CREATE INDEX IF NOT EXISTS idx_equip_usage_equip ON equipment_usage(equipment_id)",
+        "CREATE INDEX IF NOT EXISTS idx_equip_usage_project ON equipment_usage(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_acceptance_project ON acceptance_records(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_acceptance_items_acc ON acceptance_items(acceptance_id)",
     ]
     for idx in indexes:
         cursor.execute(idx)
@@ -1461,7 +1898,8 @@ def get_db_stats() -> Dict:
     tables = ["projects", "daily_logs", "quality_tests", "checklist_state",
               "material_records", "photos", "suppliers", "supplier_prices",
               "curing_records", "workers", "teams", "work_hours",
-              "budget_items", "notifications"]
+              "budget_items", "notifications", "equipment", "equipment_usage",
+              "acceptance_records", "acceptance_items"]
     for table in tables:
         count = cursor.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         stats[table] = count
