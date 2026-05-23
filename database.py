@@ -102,6 +102,44 @@ def init_db():
             record_date TEXT DEFAULT (date('now')),
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            contact_person TEXT DEFAULT '',
+            phone TEXT DEFAULT '',
+            address TEXT DEFAULT '',
+            materials TEXT DEFAULT '[]',
+            rating INTEGER DEFAULT 3,
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS supplier_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_id INTEGER NOT NULL,
+            material_name TEXT NOT NULL,
+            unit_price REAL NOT NULL DEFAULT 0,
+            price_date TEXT NOT NULL DEFAULT (date('now')),
+            notes TEXT DEFAULT '',
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS curing_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            record_date TEXT NOT NULL DEFAULT (date('now')),
+            weather TEXT DEFAULT '晴',
+            temp_min REAL DEFAULT 20,
+            temp_max REAL DEFAULT 25,
+            humidity REAL DEFAULT 60,
+            wind_level TEXT DEFAULT '',
+            curing_measure TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
     """)
 
     conn.commit()
@@ -479,6 +517,175 @@ def get_material_records(project_id: int, limit: int = 50) -> List[Dict]:
 
 
 # ============================================================
+# 供应商管理
+# ============================================================
+
+def add_supplier(name: str, contact_person: str = "", phone: str = "",
+                 address: str = "", materials: str = "[]",
+                 rating: int = 3, notes: str = "") -> int:
+    """添加供应商"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO suppliers (name, contact_person, phone, address, materials, rating, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (name, contact_person, phone, address, materials, rating, notes))
+    sid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return sid
+
+
+def get_suppliers() -> List[Dict]:
+    """获取所有供应商"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT s.*,
+            (SELECT COUNT(*) FROM supplier_prices WHERE supplier_id = s.id) as price_count
+        FROM suppliers s ORDER BY s.updated_at DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_supplier(sid: int) -> Optional[Dict]:
+    """获取单个供应商"""
+    conn = get_db()
+    cursor = conn.cursor()
+    row = cursor.execute("SELECT * FROM suppliers WHERE id = ?", (sid,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_supplier(sid: int, **kwargs) -> bool:
+    """更新供应商信息"""
+    allowed = ['name', 'contact_person', 'phone', 'address', 'materials', 'rating', 'notes']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    updates['updated_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [sid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE suppliers SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_supplier(sid: int) -> bool:
+    """删除供应商"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM supplier_prices WHERE supplier_id = ?", (sid,))
+    cursor.execute("DELETE FROM suppliers WHERE id = ?", (sid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# 供应商报价管理
+# ============================================================
+
+def add_supplier_price(supplier_id: int, material_name: str,
+                       unit_price: float, price_date: str = "",
+                       notes: str = "") -> int:
+    """添加供应商报价记录"""
+    if not price_date:
+        price_date = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO supplier_prices (supplier_id, material_name, unit_price, price_date, notes)
+        VALUES (?, ?, ?, ?, ?)
+    """, (supplier_id, material_name, unit_price, price_date, notes))
+    pid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return pid
+
+
+def get_supplier_prices(supplier_id: int) -> List[Dict]:
+    """获取供应商的报价历史"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM supplier_prices
+        WHERE supplier_id = ?
+        ORDER BY price_date DESC, id DESC
+    """, (supplier_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_best_prices(material_name: str) -> List[Dict]:
+    """获取某种材料的最优报价（按价格升序）"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT sp.*, s.name as supplier_name, s.phone, s.contact_person
+        FROM supplier_prices sp
+        JOIN suppliers s ON sp.supplier_id = s.id
+        WHERE sp.material_name = ?
+        ORDER BY sp.unit_price ASC
+    """, (material_name,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ============================================================
+# 养护记录管理
+# ============================================================
+
+def add_curing_record(project_id: int, record_date: str = "",
+                      weather: str = "晴", temp_min: float = 20,
+                      temp_max: float = 25, humidity: float = 60,
+                      wind_level: str = "", curing_measure: str = "",
+                      notes: str = "") -> int:
+    """添加养护记录"""
+    if not record_date:
+        record_date = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO curing_records (project_id, record_date, weather,
+            temp_min, temp_max, humidity, wind_level, curing_measure, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (project_id, record_date, weather, temp_min, temp_max,
+          humidity, wind_level, curing_measure, notes))
+    rid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return rid
+
+
+def get_curing_records(project_id: int) -> List[Dict]:
+    """获取项目的养护记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM curing_records
+        WHERE project_id = ?
+        ORDER BY record_date DESC, id DESC
+    """, (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_curing_record(rid: int) -> bool:
+    """删除养护记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM curing_records WHERE id = ?", (rid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
 # 数据导出
 # ============================================================
 
@@ -511,6 +718,11 @@ def export_project_data(project_id: int) -> Dict:
         "SELECT * FROM material_records WHERE project_id = ? ORDER BY record_date",
         (project_id,)).fetchall()]
 
+    # 养护记录
+    curing = [dict(r) for r in cursor.execute(
+        "SELECT * FROM curing_records WHERE project_id = ? ORDER BY record_date",
+        (project_id,)).fetchall()]
+
     conn.close()
 
     # 材料用量计算
@@ -519,7 +731,7 @@ def export_project_data(project_id: int) -> Dict:
     purchase = calc_purchase_list(calc['summary'])
 
     return {
-        "export_version": "3.1.0",
+        "export_version": "3.8.0",
         "exported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "project": dict(project),
         "statistics": {
@@ -529,12 +741,14 @@ def export_project_data(project_id: int) -> Dict:
             "quality_count": len(quality),
             "passed_count": sum(1 for q in quality if q['is_pass']),
             "material_records": len(materials),
+            "curing_records": len(curing),
             "total_material_kg": calc['total_weight_kg'],
         },
         "daily_logs": logs,
         "checklist": checklist,
         "quality_tests": quality,
         "material_records": materials,
+        "curing_records": curing,
         "material_calculation": calc,
         "purchase_list": purchase,
     }
@@ -757,6 +971,11 @@ def optimize_database():
         "CREATE INDEX IF NOT EXISTS idx_inventory_project ON material_records(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_inventory_name ON material_records(material_name)",
         "CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)",
+        "CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name)",
+        "CREATE INDEX IF NOT EXISTS idx_supplier_prices_supplier ON supplier_prices(supplier_id)",
+        "CREATE INDEX IF NOT EXISTS idx_supplier_prices_material ON supplier_prices(material_name)",
+        "CREATE INDEX IF NOT EXISTS idx_curing_project ON curing_records(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_curing_date ON curing_records(record_date)",
     ]
     for idx in indexes:
         cursor.execute(idx)
@@ -776,7 +995,8 @@ def get_db_stats() -> Dict:
 
     stats = {}
     tables = ["projects", "daily_logs", "quality_tests", "checklist_state",
-              "material_records", "photos"]
+              "material_records", "photos", "suppliers", "supplier_prices",
+              "curing_records"]
     for table in tables:
         count = cursor.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         stats[table] = count
@@ -856,6 +1076,18 @@ def import_project(data: Dict) -> Dict:
               float(mat.get('quantity_packages', 0)), float(mat.get('unit_price', 0)),
               float(mat.get('total_cost', 0)), mat.get('record_date', '')))
         import_count["materials"] += 1
+
+    # 导入养护记录
+    for cr in data.get('curing_records', []):
+        cursor.execute("""
+            INSERT INTO curing_records (project_id, record_date, weather,
+                temp_min, temp_max, humidity, wind_level, curing_measure, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (pid, cr.get('record_date', ''), cr.get('weather', '晴'),
+              float(cr.get('temp_min', 20)), float(cr.get('temp_max', 25)),
+              float(cr.get('humidity', 60)), cr.get('wind_level', ''),
+              cr.get('curing_measure', ''), cr.get('notes', '')))
+        import_count["curing"] = import_count.get("curing", 0) + 1
 
     conn.commit()
     conn.close()

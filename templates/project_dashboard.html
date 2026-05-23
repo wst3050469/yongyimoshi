@@ -126,7 +126,95 @@
         {% endfor %}
     </div>
 
-    <div class="no-print" style="text-align:center;padding:16px;color:#999;font-size:0.8rem;">
+    <div class="card">
+    <h2>🌤️ 养护记录</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <input id="cur_date" type="date" value="" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+        <select id="cur_weather" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+            <option value="晴">☀️ 晴</option>
+            <option value="多云">⛅ 多云</option>
+            <option value="阴">☁️ 阴</option>
+            <option value="小雨">🌦️ 小雨</option>
+            <option value="中雨">🌧️ 中雨</option>
+            <option value="大雨">🌧️ 大雨</option>
+        </select>
+        <input id="cur_temp" type="text" placeholder="温度区间" value="20~25" style="width:100px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+        <input id="cur_humidity" type="number" placeholder="湿度%" value="60" style="width:80px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+        <input id="cur_measure" type="text" placeholder="养护措施" style="flex:1;min-width:120px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+        <button class="btn btn-primary" onclick="addCuringRecord()">➕ 记录</button>
+    </div>
+    <div id="curingList"><p style="color:#999;font-size:0.85rem;">加载中...</p></div>
+</div>
+
+<script>
+function loadCuringRecords() {
+    const pid = getProjectId();
+    if (!pid) return;
+    fetch('/api/curing?project_id=' + pid)
+    .then(r => r.json())
+    .then(records => {
+        const div = document.getElementById('curingList');
+        if (records.length === 0) {
+            div.innerHTML = '<p style="color:#999;font-size:0.85rem;">暂无养护记录</p>';
+            return;
+        }
+        div.innerHTML = '<table class="result-table"><thead><tr><th>日期</th><th>天气</th><th>温度</th><th>湿度</th><th>养护措施</th><th>操作</th></tr></thead><tbody>' +
+            records.map(r => `
+                <tr>
+                    <td>${r.record_date}</td>
+                    <td>${r.weather}</td>
+                    <td>${r.temp_min}~${r.temp_max}°C</td>
+                    <td>${r.humidity}%</td>
+                    <td>${r.curing_measure || '-'}</td>
+                    <td><button onclick="deleteCuring(${r.id})" style="background:none;border:none;color:#e74c3c;cursor:pointer;">🗑️</button></td>
+                </tr>
+            `).join('') + '</tbody></table>';
+    });
+}
+
+function addCuringRecord() {
+    const pid = getProjectId();
+    if (!pid) return;
+    const data = {
+        project_id: pid,
+        record_date: document.getElementById('cur_date').value || new Date().toISOString().split('T')[0],
+        weather: document.getElementById('cur_weather').value,
+        temp_min: parseFloat((document.getElementById('cur_temp').value || '20').split('~')[0]) || 20,
+        temp_max: parseFloat((document.getElementById('cur_temp').value || '25').split('~')[1]) || 25,
+        humidity: parseFloat(document.getElementById('cur_humidity').value) || 60,
+        curing_measure: document.getElementById('cur_measure').value || '',
+    };
+    fetch('/api/curing', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === 'ok') {
+            showToast('✅ 养护记录已添加');
+            document.getElementById('cur_measure').value = '';
+            loadCuringRecords();
+        }
+    });
+}
+
+function deleteCuring(rid) {
+    if (!confirm('确定删除此记录？')) return;
+    fetch('/api/curing/' + rid, {method: 'DELETE'})
+    .then(r => r.json())
+    .then(d => { if (d.status === 'ok') loadCuringRecords(); });
+}
+
+// Extend init
+const origInit = window.initDashboard;
+window.initDashboard = function() {
+    if (origInit) origInit();
+    loadCuringRecords();
+};
+</script>
+
+<div class="no-print" style="text-align:center;padding:16px;color:#999;font-size:0.8rem;">
         永颐无机磨石 · 施工管理平台 | 报告生成时间: {{ generated_at }}
     </div>
 </main>

@@ -550,6 +550,160 @@ def api_projects_batch():
 
 
 # ============================================================
+# 供应商管理
+# ============================================================
+
+from database import (
+    add_supplier, get_suppliers, get_supplier, update_supplier, delete_supplier,
+    add_supplier_price, get_supplier_prices, get_best_prices,
+    add_curing_record, get_curing_records, delete_curing_record,
+)
+
+
+@app.route('/suppliers')
+def suppliers_page():
+    """供应商管理页面"""
+    return render_template('suppliers.html')
+
+
+@app.route('/api/suppliers', methods=['GET'])
+def api_suppliers_list():
+    """供应商列表"""
+    return jsonify(get_suppliers())
+
+
+@app.route('/api/suppliers', methods=['POST'])
+def api_suppliers_add():
+    """添加供应商"""
+    data = request.get_json()
+    if not data or not data.get('name'):
+        return api_error("供应商名称不能为空")
+    sid = add_supplier(
+        name=data['name'],
+        contact_person=data.get('contact_person', ''),
+        phone=data.get('phone', ''),
+        address=data.get('address', ''),
+        materials=json.dumps(data.get('materials', []), ensure_ascii=False),
+        rating=int(data.get('rating', 3)),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": sid})
+
+
+@app.route('/api/suppliers/<int:sid>', methods=['GET'])
+def api_suppliers_get(sid):
+    """获取供应商详情"""
+    s = get_supplier(sid)
+    if not s:
+        return api_error("供应商不存在")
+    # 解析materials JSON
+    try:
+        s['materials_list'] = json.loads(s.get('materials', '[]'))
+    except:
+        s['materials_list'] = []
+    return jsonify(s)
+
+
+@app.route('/api/suppliers/<int:sid>', methods=['PUT'])
+def api_suppliers_update(sid):
+    """更新供应商"""
+    data = request.get_json() or {}
+    if 'materials' in data:
+        data['materials'] = json.dumps(data['materials'], ensure_ascii=False)
+    ok = update_supplier(sid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/suppliers/<int:sid>', methods=['DELETE'])
+def api_suppliers_delete(sid):
+    """删除供应商"""
+    ok = delete_supplier(sid)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/suppliers/<int:sid>/prices', methods=['GET'])
+def api_supplier_prices(sid):
+    """供应商报价历史"""
+    return jsonify(get_supplier_prices(sid))
+
+
+@app.route('/api/suppliers/<int:sid>/prices', methods=['POST'])
+def api_supplier_prices_add(sid):
+    """添加报价记录"""
+    data = request.get_json()
+    if not data or not data.get('material_name') or not data.get('unit_price'):
+        return api_error("材料名称和单价必填")
+    pid = add_supplier_price(
+        supplier_id=sid,
+        material_name=data['material_name'],
+        unit_price=float(data['unit_price']),
+        price_date=data.get('price_date', ''),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": pid})
+
+
+@app.route('/api/prices/best/<material_name>')
+def api_best_prices(material_name):
+    """获取材料最优报价"""
+    return jsonify(get_best_prices(material_name))
+
+
+# ============================================================
+# 养护记录管理
+# ============================================================
+
+@app.route('/api/curing', methods=['GET'])
+def api_curing_list():
+    """养护记录列表"""
+    project_id = request.args.get('project_id', 0, type=int)
+    if not project_id:
+        return api_error("缺少 project_id 参数")
+    return jsonify(get_curing_records(project_id))
+
+
+@app.route('/api/curing', methods=['POST'])
+def api_curing_add():
+    """添加养护记录"""
+    data = request.get_json()
+    if not data or not data.get('project_id'):
+        return api_error("缺少 project_id")
+    rid = add_curing_record(
+        project_id=int(data['project_id']),
+        record_date=data.get('record_date', ''),
+        weather=data.get('weather', '晴'),
+        temp_min=float(data.get('temp_min', 20)),
+        temp_max=float(data.get('temp_max', 25)),
+        humidity=float(data.get('humidity', 60)),
+        wind_level=data.get('wind_level', ''),
+        curing_measure=data.get('curing_measure', ''),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": rid})
+
+
+@app.route('/api/curing/<int:rid>', methods=['DELETE'])
+def api_curing_delete(rid):
+    """删除养护记录"""
+    ok = delete_curing_record(rid)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+# ============================================================
+# 打印报告
+# ============================================================
+
+@app.route('/project/<int:pid>/report')
+def print_report(pid):
+    """施工方案打印报告"""
+    from database import generate_report
+    report = generate_report(pid)
+    if 'error' in report:
+        return api_error(report['error'])
+    return render_template('print_report.html', report=report)
+
+
+# ============================================================
 # 错误处理器
 # ============================================================
 

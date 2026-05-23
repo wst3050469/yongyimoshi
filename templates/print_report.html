@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>施工报告 - {{ report.project.name }}</title>
+    <style>
+        @page { margin: 15mm; size: A4; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; color: #222; background: #fff; padding: 20px; }
+        @media print { body { padding: 0; } .no-print { display: none !important; } }
+
+        .report-header { text-align: center; padding: 30px 0 20px; border-bottom: 3px double #1a5276; margin-bottom: 24px; }
+        .report-header h1 { font-size: 22px; color: #1a5276; letter-spacing: 4px; }
+        .report-header .sub { color: #666; font-size: 12px; margin-top: 6px; }
+        .report-header .meta { font-size: 11px; color: #999; margin-top: 8px; }
+
+        .section { margin-bottom: 24px; page-break-inside: avoid; }
+        .section h2 { font-size: 15px; color: #1a5276; border-left: 4px solid #1a5276; padding-left: 10px; margin-bottom: 12px; }
+
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .info-grid .item { background: #f8f9fa; padding: 10px 14px; border-radius: 6px; }
+        .info-grid .item label { font-size: 11px; color: #888; display: block; }
+        .info-grid .item .value { font-size: 14px; font-weight: 600; color: #222; margin-top: 3px; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+        th { background: #1a5276; color: #fff; padding: 8px 10px; text-align: left; font-weight: 500; }
+        td { padding: 7px 10px; border-bottom: 1px solid #e8e8e8; }
+        tr:nth-child(even) td { background: #f8f9fa; }
+
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .status-pass { background: #e8f5e9; color: #2e7d32; }
+        .status-fail { background: #fce4ec; color: #c62828; }
+        .status-pending { background: #fff3e0; color: #e65100; }
+
+        .progress-bar { height: 8px; background: #e8e8e8; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+        .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #2980b9, #1a5276); border-radius: 4px; transition: width 0.3s; }
+
+        .footer { text-align: center; padding: 20px; color: #999; font-size: 10px; border-top: 1px solid #eee; margin-top: 32px; }
+
+        .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; color: rgba(26,82,118,0.04); pointer-events: none; z-index: -1; white-space: nowrap; letter-spacing: 20px; }
+
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        @media (max-width: 768px) {
+            .info-grid { grid-template-columns: 1fr 1fr; }
+            .two-col { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="watermark">永颐无机磨石</div>
+
+<button onclick="window.print()" class="no-print" style="position:fixed;top:16px;right:16px;z-index:999;padding:10px 24px;background:#1a5276;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🖨️ 打印/导出PDF</button>
+<button onclick="history.back()" class="no-print" style="position:fixed;top:16px;right:140px;z-index:999;padding:10px 24px;background:#eee;color:#333;border:none;border-radius:8px;cursor:pointer;font-size:14px;">← 返回</button>
+
+<div class="report-header">
+    <h1>永颐无机磨石 · 施工综合报告</h1>
+    <div class="sub">浙江永颐装饰工程有限公司</div>
+    <div class="meta">报告生成: {{ report.generated_at }} &nbsp;|&nbsp; 项目编号: #{{ report.project.id }}</div>
+</div>
+
+<!-- 项目概览 -->
+<div class="section">
+    <h2>📋 项目概览</h2>
+    <div class="info-grid">
+        <div class="item">
+            <label>项目名称</label>
+            <div class="value">{{ report.project.name }}</div>
+        </div>
+        <div class="item">
+            <label>施工面积</label>
+            <div class="value">{{ report.project.area }} m²</div>
+        </div>
+        <div class="item">
+            <label>施工状态</label>
+            <div class="value">{{ report.project.status }}</div>
+        </div>
+        <div class="item">
+            <label>基层厚度</label>
+            <div class="value">{{ report.project.base_thickness }} mm</div>
+        </div>
+        <div class="item">
+            <label>面层厚度</label>
+            <div class="value">{{ report.project.surface_thickness }} mm</div>
+        </div>
+        <div class="item">
+            <label>开工日期</label>
+            <div class="value">{{ report.project.start_date }}</div>
+        </div>
+        {% if report.project.location %}
+        <div class="item">
+            <label>施工地点</label>
+            <div class="value">{{ report.project.location }}</div>
+        </div>
+        {% endif %}
+        <div class="item">
+            <label>施工日志</label>
+            <div class="value">{{ report.dashboard.log_count }} 条</div>
+        </div>
+        <div class="item">
+            <label>检查清单</label>
+            <div class="value">{{ report.dashboard.checked_items }}/{{ report.dashboard.total_items }} ({{ report.dashboard.overall_progress }}%)</div>
+        </div>
+    </div>
+</div>
+
+<!-- 施工进度 -->
+<div class="section">
+    <h2>📊 施工进度</h2>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+        <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+                <span>总体进度</span><span>{{ report.dashboard.overall_progress }}%</span>
+            </div>
+            <div class="progress-bar"><div class="fill" style="width:{{ report.dashboard.overall_progress }}%;"></div></div>
+        </div>
+    </div>
+    <table>
+        <thead><tr><th>施工阶段</th><th>进度</th><th>完成项</th></tr></thead>
+        <tbody>
+            {% for phase, data in report.dashboard.phase_progress.items() %}
+            <tr>
+                <td>{{ phase }}</td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <div class="progress-bar" style="flex:1;"><div class="fill" style="width:{{ data.percent }}%;"></div></div>
+                        <span style="font-size:11px;">{{ data.percent }}%</span>
+                    </div>
+                </td>
+                <td>{{ data.checked }}/{{ data.total }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 材料清单 -->
+<div class="section">
+    <h2>🧱 材料配比与用量</h2>
+    <div class="two-col">
+        <div>
+            <h3 style="font-size:13px;margin-bottom:8px;">基层抗裂砂浆 ({{ report.project.base_thickness }}mm)</h3>
+            <table>
+                <thead><tr><th>材料</th><th>用量(kg)</th><th>配比(%)</th></tr></thead>
+                <tbody>
+                    {% for m in report.materials.layers %}
+                    {% if m.layer == '基层' %}
+                    <tr>
+                        <td>{{ m.material }}</td>
+                        <td>{{ m.amount_kg }}</td>
+                        <td>{{ m.percentage }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div>
+            <h3 style="font-size:13px;margin-bottom:8px;">面层无机磨石 ({{ report.project.surface_thickness }}mm)</h3>
+            <table>
+                <thead><tr><th>材料</th><th>用量(kg)</th><th>配比(%)</th></tr></thead>
+                <tbody>
+                    {% for m in report.materials.layers %}
+                    {% if m.layer == '面层' %}
+                    <tr>
+                        <td>{{ m.material }}</td>
+                        <td>{{ m.amount_kg }}</td>
+                        <td>{{ m.percentage }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div style="margin-top:8px;text-align:right;font-size:12px;color:#888;">
+        材料总重: <strong>{{ report.materials.total_weight_kg }} kg</strong>
+    </div>
+</div>
+
+<!-- 检查清单 -->
+<div class="section">
+    <h2>✅ 施工检查清单</h2>
+    {% for cat in report.checklist %}
+    <div style="margin-bottom:12px;">
+        <h3 style="font-size:13px;color:#1a5276;margin-bottom:4px;">{{ cat.category }}</h3>
+        <table>
+            <thead><tr><th style="width:40px;">状态</th><th>检查项</th></tr></thead>
+            <tbody>
+                {% for item in cat.items %}
+                <tr>
+                    <td style="text-align:center;">
+                        {% if item.checked %}
+                        <span style="color:#2e7d32;font-size:16px;">✓</span>
+                        {% else %}
+                        <span style="color:#bbb;font-size:16px;">○</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.text }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- 质量检测 -->
+<div class="section">
+    <h2>🧪 质量检测结果</h2>
+    <table>
+        <thead><tr><th>检测项目</th><th>标准值</th><th>实测值</th><th>结果</th></tr></thead>
+        <tbody>
+            {% for t in report.quality.templates %}
+            {% set val = report.quality.results.get(t.id, '') %}
+            {% set passed = report.quality.results.get(t.id + '_pass', false) %}
+            <tr>
+                <td>{{ t.name }}</td>
+                <td>{{ t.standard }}</td>
+                <td>{{ val if val else '未检测' }}</td>
+                <td>
+                    {% if val %}
+                    <span class="status-badge {{ 'status-pass' if passed else 'status-fail' }}">
+                        {{ '合格' if passed else '不合格' }}
+                    </span>
+                    {% else %}
+                    <span class="status-badge status-pending">待检</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 施工日志摘要 -->
+<div class="section">
+    <h2>📝 施工日志摘要 (最近10条)</h2>
+    <table>
+        <thead><tr><th>日期</th><th>天气</th><th>人数</th><th>施工内容</th><th>问题</th></tr></thead>
+        <tbody>
+            {% for log in report.logs[:10] %}
+            <tr>
+                <td>{{ log.log_date }}</td>
+                <td>{{ log.weather }} {{ log.temperature }}°C</td>
+                <td>{{ log.workers }}人</td>
+                <td style="max-width:200px;">{{ log.work_content[:60] if log.work_content else '-' }}</td>
+                <td>{{ log.issues if log.issues != '无' else '正常' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="footer">
+    <p>永颐无机磨石 · 施工管理平台</p>
+    <p>本报告由系统自动生成，仅供内部施工管理使用</p>
+</div>
+
+<script>
+// 页面加载后自动触发打印预览
+// window.onload = function() { setTimeout(function() { window.print(); }, 500); };
+</script>
+</body>
+</html>
