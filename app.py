@@ -268,6 +268,39 @@ def api_project_delete(pid):
 
 
 # ============================================================
+# 工序状态机
+# ============================================================
+
+from database import get_project_phases, update_phase_status, PHASE_ORDER
+
+
+@app.route('/api/projects/<int:pid>/phases', methods=['GET'])
+def api_project_phases(pid):
+    """获取项目工序状态"""
+    phases = get_project_phases(pid)
+    return jsonify({
+        "project_id": pid,
+        "phases": phases,
+        "phase_order": PHASE_ORDER,
+    })
+
+
+@app.route('/api/projects/<int:pid>/phases/<phase_name>', methods=['PUT'])
+def api_project_phase_update(pid, phase_name):
+    """更新工序状态（自动校验流转合法性）"""
+    from urllib.parse import unquote
+    phase_name = unquote(phase_name)
+    data = request.get_json() or {}
+    new_status = data.get('status', '')
+    if not new_status:
+        return api_error("缺少 status 字段")
+    result = update_phase_status(pid, phase_name, new_status)
+    if not result.get('ok'):
+        return api_error(result.get('error', '状态更新失败'))
+    return jsonify(result)
+
+
+# ============================================================
 # 材料计算
 # ============================================================
 

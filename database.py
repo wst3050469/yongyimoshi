@@ -383,6 +383,19 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS project_phases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            phase_name TEXT NOT NULL,
+            phase_order INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            started_at TEXT DEFAULT '',
+            completed_at TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
     """)
 
     conn.commit()
@@ -411,6 +424,8 @@ def create_project(name: str = "新建项目", area: float = 100,
     _init_checklist_for_project(pid, conn)
     # 初始化质量检测项
     _init_quality_tests_for_project(pid, conn)
+    # 初始化工序状态
+    _init_project_phases(pid, conn)
 
     conn.commit()
     conn.close()
@@ -438,6 +453,17 @@ def _init_quality_tests_for_project(pid: int, conn: sqlite3.Connection):
             INSERT INTO quality_tests (project_id, test_id, test_name, standard_value)
             VALUES (?, ?, ?, ?)
         """, (pid, t["id"], t["name"], t["standard"]))
+
+
+def _init_project_phases(pid: int, conn: sqlite3.Connection):
+    """为新项目初始化工序状态"""
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM project_phases WHERE project_id = ?", (pid,))
+    for i, name in enumerate(PHASE_ORDER, 1):
+        cursor.execute("""
+            INSERT INTO project_phases (project_id, phase_name, phase_order, status)
+            VALUES (?, ?, ?, ?)
+        """, (pid, name, i, 'pending'))
 
 
 def get_projects() -> List[Dict]:
@@ -3116,4 +3142,154 @@ def get_environment_stats(project_id: int) -> Dict:
         "total_records": 0, "avg_temp": 0, "min_temp": 0, "max_temp": 0,
         "avg_humidity": 0, "min_humidity": 0, "max_humidity": 0,
         "avg_base_moisture": None, "avg_surface_temp": None
+    }
+
+
+# ============================================================
+# 工序状态机
+# ============================================================
+
+# 标准工序顺序
+PHASE_ORDER = [
+    "基层处理", "抗裂砂浆施工", "基层养护", "面层界面处理",
+    "面层浇筑", "面层养护", "打磨抛光", "密封固化", "最终验收"
+]
+
+
+def init_project_phases(project_id: int):
+    """初始化项目工序（创建项目时调用）"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM project_phases WHERE project_id = ?", (project_id,))
+    for i, name in enumerate(PHASE_ORDER, 1):
+        cursor.execute("""
+            INSERT INTO project_phases (project_id, phase_name, phase_order, status)
+            VALUES (?, ?, ?, ?)
+        """, (project_id, name, i, 'pending'))
+    conn.commit()
+    conn.close()
+
+
+def get_project_phases(project_id: int) -> List[Dict]:
+    """获取项目工序状态"""
+    conn = get_db()
+    cursor = conn.cursor()
+    phases = cursor.execute("""
+        SELECT * FROM project_phases
+        WHERE project_id = ?
+        ORDER BY phase_order
+    """, (project_id,)).fetchall()
+    conn.close()
+    if not phases:
+        return [{"phase_name": p, "status": "pending", "phase_order": i+1}
+                for i, p in enumerate(PHASE_ORDER)]
+    return [dict(p) for p in phases]
+
+
+VALID_PHASE_TRANSITIONS = {
+    "pending": "in_progress",
+    "in_progress": "completed",
+    "completed": "in_progress",  # 可以回退修改
+}
+
+
+def update_phase_status(project_id: int, phase_name: str, new_status: str) -> Dict:
+    """更新工序状态（带流转校验）
+
+    状态转换规则:
+    - 前置工序必须completed才能开始当前工序
+    - 不能跳过工序
+    """
+    if phase_name not in PHASE_ORDER:
+        return {"ok": False, "error": f"未知工序: {phase_name}"}
+
+    if new_status not in VALID_PHASE_TRANSITIONS:
+        return {"ok": False, "error": f"无效状态: {new_status}"}
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 获取当前工序
+    phase = cursor.execute("""
+        SELECT * FROM project_phases
+        WHERE project_id = ? AND phase_name = ?
+    """, (project_id, phase_name)).fetchone()
+
+    if not phase:
+        # 如果数据库没有，初始化
+        init_project_phases(project_id)
+        phase = cursor.execute("""
+            SELECT * FROM project_phases
+            WHERE project_id = ? AND phase_name = ?
+        """, (project_id, phase_name)).fetchone()
+        if not phase:
+            conn.close()
+            return {"ok": False, "error": "工序初始化失败"}
+
+    phase = dict(phase)
+    current_status = phase['status']
+    phase_order = phase['phase_order']
+
+    # 校验状态转换合法性
+    allowed = VALID_PHASE_TRANSITIONS.get(current_status, [])
+    if new_status not in allowed and new_status != current_status:
+        conn.close()
+        return {"ok": False, "error": f"工序状态不能从'{current_status}'转换为'{new_status}'"}
+
+    # 前置工序必须已完成（开始新工序时校验）
+    if new_status == "in_progress" and current_status == "pending":
+        prev_phase = cursor.execute("""
+            SELECT status FROM project_phases
+            WHERE project_id = ? AND phase_order = ?
+        """, (project_id, phase_order - 1)).fetchone()
+        if prev_phase and prev_phase['status'] != 'completed':
+            conn.close()
+            return {"ok": False, "error": f"前置工序未完成，不能开始'{phase_name}'"}
+
+    from datetime import datetime
+    now = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    if new_status == "in_progress":
+        cursor.execute("""
+            UPDATE project_phases SET status = ?, started_at = ?
+            WHERE project_id = ? AND phase_name = ?
+        """, (new_status, now, project_id, phase_name))
+    elif new_status == "completed":
+        cursor.execute("""
+            UPDATE project_phases SET status = ?, completed_at = ?
+            WHERE project_id = ? AND phase_name = ?
+        """, (new_status, now, project_id, phase_name))
+    else:
+        cursor.execute("""
+            UPDATE project_phases SET status = ?
+            WHERE project_id = ? AND phase_name = ?
+        """, (new_status, project_id, phase_name))
+
+    conn.commit()
+
+    # 更新项目整体进度
+    all_phases = cursor.execute("""
+        SELECT status FROM project_phases
+        WHERE project_id = ? ORDER BY phase_order
+    """, (project_id,)).fetchall()
+
+    completed_count = sum(1 for p in all_phases if p['status'] == 'completed')
+    total_count = len(all_phases)
+
+    from datetime import datetime
+    if completed_count == total_count:
+        cursor.execute("UPDATE projects SET status = '已完成', updated_at = ? WHERE id = ?",
+                       (datetime.now().strftime('%Y-%m-%d %H:%M'), project_id))
+    elif completed_count > 0:
+        cursor.execute("UPDATE projects SET status = '进行中', updated_at = ? WHERE id = ?",
+                       (datetime.now().strftime('%Y-%m-%d %H:%M'), project_id))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "ok": True,
+        "phase_name": phase_name,
+        "new_status": new_status,
+        "progress": f"{completed_count}/{total_count}",
     }

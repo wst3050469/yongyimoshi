@@ -357,3 +357,237 @@ class TestPDFReport:
         rv = client.get('/api/report/1/pdf')
         # weasyprint可能未安装，返回400；已安装则尝试生成PDF
         assert rv.status_code in (400, 200)
+
+class TestSupplierAPI:
+    """供应商管理API测试"""
+
+    def test_add_supplier(self, client):
+        """添加供应商"""
+        rv = client.post('/api/suppliers', json={
+            'name': '测试供应商', 'contact_person': '张三', 'phone': '13800138000',
+            'materials': ['硅酸盐水泥', '黄沙'], 'rating': 4
+        })
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert 'id' in data
+
+    def test_list_suppliers(self, client):
+        """获取供应商列表"""
+        rv = client.get('/api/suppliers')
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert isinstance(data, list)
+
+    def test_get_supplier(self, client):
+        """获取单个供应商"""
+        rv = client.get('/api/suppliers/1')
+        assert rv.status_code == 200 or rv.status_code == 400
+
+    def test_add_price(self, client):
+        """添加供应商报价"""
+        rv = client.post('/api/suppliers/1/prices', json={
+            'material_name': '硅酸盐水泥', 'unit_price': 28
+        })
+        assert rv.status_code in (200, 400)
+
+
+class TestEquipmentAPI:
+    """设备管理API测试"""
+
+    def test_add_equipment(self, client):
+        """添加设备"""
+        rv = client.post('/api/equipment', json={
+            'name': '磨光机', 'type': '打磨设备', 'quantity': 2, 'status': '可用'
+        })
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert 'id' in data
+
+    def test_list_equipment(self, client):
+        """获取设备列表"""
+        rv = client.get('/api/equipment')
+        assert rv.status_code == 200
+        assert isinstance(rv.get_json(), list)
+
+    def test_update_equipment(self, client):
+        """更新设备"""
+        rv = client.put('/api/equipment/1', json={'status': '维修中'})
+        assert rv.status_code == 200
+
+    def test_equipment_usage(self, client):
+        """设备使用记录"""
+        rv = client.post('/api/equipment-usage', json={
+            'equipment_id': 1, 'project_id': 1, 'quantity_used': 1, 'start_date': '2024-06-01'
+        })
+        assert rv.status_code in (200, 400)
+
+
+class TestSafetyAPI:
+    """安全管理API测试"""
+
+    def test_safety_templates(self, client):
+        """安全检查模板"""
+        rv = client.get('/api/safety/templates')
+        assert rv.status_code == 200
+
+    def test_add_safety_check(self, client):
+        """添加安全检查"""
+        rv = client.post('/api/safety/checks', json={
+            'project_id': 1, 'check_date': '2024-06-15',
+            'inspector': '李四', 'items': [{'id': 's1', 'name': '安全帽佩戴', 'pass': True}]
+        })
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert 'id' in data
+
+    def test_add_incident(self, client):
+        """添加安全事件"""
+        rv = client.post('/api/safety/incidents', json={
+            'project_id': 1, 'incident_date': '2024-06-15',
+            'incident_type': '轻微伤害', 'severity': '轻微',
+            'description': '测试事件', 'injured_person': '王五'
+        })
+        assert rv.status_code == 200
+
+
+class TestDocumentAPI:
+    """文档管理API测试"""
+
+    def test_list_documents(self, client):
+        """获取文档列表"""
+        rv = client.get('/api/documents?project_id=1')
+        assert rv.status_code == 200
+        assert isinstance(rv.get_json(), list)
+
+
+class TestMaterialRequestAPI:
+    """材料申购API测试"""
+
+    def test_add_request(self, client):
+        """添加申购单"""
+        rv = client.post('/api/material-requests', json={
+            'project_id': 1, 'applicant': '赵六',
+            'items': [{'material_name': '水泥', 'quantity_kg': 500}]
+        })
+        assert rv.status_code == 200
+
+    def test_list_requests(self, client):
+        """申购单列表"""
+        rv = client.get('/api/material-requests?project_id=1')
+        assert rv.status_code == 200
+
+
+class TestSubcontractorAPI:
+    """分包商管理API测试"""
+
+    def test_add_subcontractor(self, client):
+        """添加分包商"""
+        rv = client.post('/api/subcontractors', json={
+            'name': '测试分包商', 'contact_person': '钱七', 'scope': '面层施工'
+        })
+        assert rv.status_code == 200
+
+    def test_list_subcontractors(self, client):
+        """分包商列表"""
+        rv = client.get('/api/subcontractors')
+        assert rv.status_code == 200
+
+
+class TestBudgetAPI:
+    """预算管理API测试"""
+
+    def test_add_budget(self, client):
+        """添加预算项"""
+        rv = client.post('/api/budget', json={
+            'project_id': 1, 'category': '材料费', 'planned_amount': 50000
+        })
+        assert rv.status_code == 200
+
+    def test_budget_summary(self, client):
+        """预算汇总"""
+        rv = client.get('/api/budget/summary?project_id=1')
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert 'total_planned' in data
+
+
+class TestNotificationAPI:
+    """通知管理API测试"""
+
+    def test_add_notification(self, client):
+        """添加通知"""
+        rv = client.post('/api/notifications', json={
+            'project_id': 1, 'title': '测试通知', 'message': '这是一条测试通知'
+        })
+        assert rv.status_code == 200
+
+    def test_unread_count(self, client):
+        """未读通知数"""
+        rv = client.get('/api/notifications/unread-count')
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert 'count' in data
+
+
+class TestSearchAPI:
+    """全局搜索API测试"""
+
+    def test_search(self, client):
+        """全局搜索"""
+        rv = client.get('/api/search?q=测试')
+        assert rv.status_code == 200
+        assert isinstance(rv.get_json(), dict)
+
+
+class TestSystemAPI:
+    """系统管理API测试"""
+
+    def test_system_stats(self, client):
+        """系统统计"""
+        rv = client.get('/api/system/stats')
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert 'projects' in data or isinstance(data, dict)
+
+class TestPhaseMachineAPI:
+    """工序状态机API测试"""
+
+    def test_get_phases(self, client):
+        """获取工序状态"""
+        rv = client.get('/api/projects/1/phases')
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert 'phases' in data
+        assert 'phase_order' in data
+
+    def test_update_phase_valid(self, client):
+        """更新工序（从pending→in_progress）"""
+        # 第一阶段可以直接开始
+        rv = client.put('/api/projects/1/phases/基层处理',
+                         json={'status': 'in_progress'})
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert data.get('ok') == True
+
+    def test_update_phase_skip(self, client):
+        """跳过工序（未完成前置）"""
+        # 第二阶段不能在没有完成第一阶段时开始
+        rv = client.put('/api/projects/1/phases/抗裂砂浆施工',
+                         json={'status': 'in_progress'})
+        # 应该失败，因为上一阶段状态是in_progress而非completed
+        assert rv.status_code == 400
+
+    def test_update_phase_complete(self, client):
+        """完成工序"""
+        # 先完成第一阶段
+        client.put('/api/projects/1/phases/基层处理', json={'status': 'completed'})
+        # 第二阶段可以开始
+        rv = client.put('/api/projects/1/phases/抗裂砂浆施工', json={'status': 'in_progress'})
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert data.get('ok') == True
+
+    def test_invalid_phase(self, client):
+        """无效工序名称"""
+        rv = client.put('/api/projects/1/phases/不存在工序', json={'status': 'in_progress'})
+        assert rv.status_code == 400

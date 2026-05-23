@@ -1,161 +1,111 @@
-# 永颐无机磨石 v3.7.0 技术规格
+# 永颐无机磨石 v3.8.0 技术规格
 
 ---
 
-## 功能一：用户认证与权限管理系统
+## 功能一：移动端响应式适配优化
 
 ### 概述
-为平台添加用户认证系统，包含注册、登录、登出、密码管理和基于角色的权限控制。
+重构CSS和模板视图，使施工管理平台在手机/平板上有良好的操作体验。
 
-### 架构设计
-- **认证方式**: Flask Session + 密码哈希 (werkzeug.security)
-- **用户角色**: admin(管理员), manager(项目经理), worker(施工员), inspector(质检员)
-- **权限粒度**: 页面级 + API级
+### 现状问题
+- style.css 625行中仅2处媒体查询
+- 首页 index.html 82KB无响应式布局
+- 表格在手机上无法横向滚动
+- 导航栏按钮在小屏幕上堆叠
+- 表单元素在手机上难以操作
 
-### 数据结构
-```sql
--- users 表
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    display_name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'worker',
-    phone TEXT DEFAULT '',
-    email TEXT DEFAULT '',
-    is_active INTEGER DEFAULT 1,
-    last_login DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
+### 改动方案
+1. **CSS全局响应式** (`static/style.css`)
+   - 添加3个断点：768px(平板)、576px(大屏手机)、400px(小屏手机)
+   - header 在小屏上折叠导航
+   - table 添加横向滚动容器
+   - 按钮/表单元素最小触控尺寸44px
+   - 卡片网格自适应列数
+
+2. **首页模板** (`templates/index.html`)
+   - 导航tab添加滚动容器
+   - 输入框组在小屏上垂直排列
+   - 图表容器自适应宽度
 
 ### 影响文件
 | 文件 | 变更 |
 |------|------|
-| `database.py` | 新增 users 表CRUD + 认证相关函数 |
-| `validation.py` | 新增用户数据验证 |
-| `app.py` | 新增认证路由 + 登录/登出 + 装饰器保护API |
-| 新建 `templates/login.html` | 登录页面 |
-| 新建 `templates/profile.html` | 用户管理页面 |
-| `templates/index.html` | 添加用户状态栏 |
-| `requirements.txt` | 无需新增依赖 |
-
-### API接口
-```
-POST /api/auth/login    - 登录
-POST /api/auth/logout   - 登出
-GET  /api/auth/me       - 当前用户信息
-GET  /api/users         - 用户列表(管理员)
-POST /api/users         - 创建用户(管理员)
-PUT  /api/users/<id>    - 更新用户(管理员)
-DELETE /api/users/<id>  - 删除用户(管理员)
-PUT  /api/auth/password - 修改密码
-```
-
-### 安全措施
-- 密码使用 pbkdf2:sha256 哈希存储
-- Session 使用 Flask 默认签名Cookie
-- 敏感API需登录后才能访问
-- 管理API限 admin 角色
+| `static/style.css` | 大幅重构，添加响应式规则 |
+| `templates/index.html` | 导航/表单/表格响应式包装 |
 
 ---
 
-## 功能二：PDF报告导出
+## 功能二：测试覆盖增强
 
 ### 概述
-将施工方案报告从HTML渲染为可下载的PDF文件，替代浏览器打印。
+为现有未测试模块添加测试用例，提升代码质量。
 
-### 架构设计
-- **方案A**: 使用 `weasyprint` 库（纯Python，无需系统依赖wkhtmltopdf）
-- **方案B**: 使用 `pdfkit`（需要 wkhtmltopdf 系统包）
-
-选用方案A（weasyprint），纯Python无系统依赖问题。
+### 未覆盖模块
+| 模块 | 数据库函数数 | 当前测试数 | 目标测试数 |
+|------|:-----------:|:---------:|:---------:|
+| 供应商管理 | 6 | 0 | 4 |
+| 设备管理 | 4 | 0 | 4 |
+| 安全检查 | 4 | 0 | 3 |
+| 安全管理(事件) | 4 | 0 | 3 |
+| 文档管理 | 4 | 0 | 3 |
+| 材料申购 | 4 | 0 | 3 |
+| 分包商 | 4 | 0 | 2 |
+| 项目模板 | 3 | 0 | 2 |
+| 验收管理 | 6 | 0 | 3 |
+| 预算管理 | 4 | 0 | 2 |
+| 通知管理 | 6 | 0 | 3 |
 
 ### 影响文件
 | 文件 | 变更 |
 |------|------|
-| `app.py` | 新增PDF导出路由 |
-| `requirements.txt` | 添加 weasyprint |
-| `templates/print_report.html` | 优化打印样式适配PDF |
-
-### API接口
-```
-GET  /api/report/<pid>/pdf  - 下载施工方案PDF报告
-```
+| `tests/test_api.py` | 添加10+个新测试类 |
+| `tests/test_calculations.py` | 添加边界测试 |
 
 ---
 
-## 功能三：环境监测数据记录模块
+## 功能三：工序状态机
 
 ### 概述
-为项目施工过程中的环境条件（温度、湿度、基层含水率等）提供专用记录、查询和趋势展示。
+为项目添加阶段状态流转校验，确保施工按照正确顺序进行。
+
+### 状态定义
+```
+基层处理 → 抗裂砂浆施工 → 基层养护 → 面层界面处理
+→ 面层浇筑 → 面层养护 → 打磨抛光 → 密封固化 → 最终验收
+```
 
 ### 数据结构
 ```sql
-CREATE TABLE environment_records (
+-- project_phases 表
+CREATE TABLE project_phases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL,
-    record_date TEXT NOT NULL,
-    record_time TEXT DEFAULT '',
-    temperature REAL DEFAULT 0,        -- 温度 ℃
-    humidity REAL DEFAULT 0,           -- 湿度 %
-    base_moisture REAL DEFAULT NULL,   -- 基层含水率 %
-    surface_temp REAL DEFAULT NULL,    -- 地表温度 ℃
-    wind_speed REAL DEFAULT NULL,      -- 风速 m/s
-    weather_condition TEXT DEFAULT '',  -- 天气状况
-    recorder TEXT DEFAULT '',           -- 记录人
+    phase_name TEXT NOT NULL,
+    phase_order INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',  -- pending/in_progress/completed/skipped
+    started_at TEXT,
+    completed_at TEXT,
     notes TEXT DEFAULT '',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id)
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 ```
 
-### 影响文件
-| 文件 | 变更 |
-|------|------|
-| `database.py` | 新增环境监测CRUD函数 |
-| `app.py` | 新增环境监测API路由 |
-| 新建 `templates/environment.html` | 环境监测页面 |
-| `templates/index.html` | 添加导航链接 |
-
 ### API接口
 ```
-GET    /api/environment?project_id=N   - 环境记录列表
-POST   /api/environment                - 添加环境记录
-DELETE /api/environment/<id>           - 删除记录
-GET    /api/environment/stats?project_id=N - 环境统计数据
+GET  /api/projects/<pid>/phases    - 获取阶段状态
+PUT  /api/projects/<pid>/phases/<phase> - 更新阶段状态(自动校验)
 ```
-
----
-
-## 功能四：数据可视化增强
-
-### 概述
-使用 Chart.js 在仪表盘和分析页面添加交互式图表，提升数据可读性。
-
-### 架构设计
-- 引入 Chart.js CDN（无需npm）
-- 图表类型：饼图(成本构成)、柱状图(材料用量)、折线图(进度趋势)、雷达图(质量检测)
 
 ### 影响文件
 | 文件 | 变更 |
 |------|------|
-| `templates/project_dashboard.html` | 添加成本饼图 + 材料用量柱状图 |
-| `templates/analytics.html` | 添加跨项目统计图表 |
+| `database.py` | 新增project_phases表+CRUD+状态校验 |
+| `app.py` | 新增阶段管理路由 |
+| `templates/index.html` | 进度面板增加阶段状态显示 |
 
 ---
 
 ## 风险与测试点
-
-### 潜在风险
-1. **认证系统**: Session安全、CSRF防护、密码强度
-2. **PDF导出**: 中文字体渲染、weasyprint系统兼容性
-3. **环境监测**: 数据有效性校验
-4. **可视化**: CDN加载失败降级
-
-### 测试要点
-- 用户注册/登录/登出流程
-- 无权限访问API返回403
-- PDF文件生成完整性验证
-- 环境监测数据CRUD验证
-- Chart.js在无数据时展示空状态
+1. 响应式CSS不破坏现有桌面布局
+2. 新测试不影响已有测试（独立fixture）
+3. 状态机向后兼容旧项目（无阶段数据时降级）

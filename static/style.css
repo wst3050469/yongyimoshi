@@ -409,34 +409,331 @@ body {
     margin-top: 0.3rem;
 }
 
-/* Responsive */
+/* ============================================
+   响应式工具类
+   ============================================ */
+
+/* 表格横向滚动容器 */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 1rem;
+}
+.table-responsive > table {
+    margin-bottom: 0;
+    min-width: 500px;
+}
+
+/* 移动端显示控制 */
+.d-none { display: none !important; }
+.d-block { display: block !important; }
+.d-flex { display: flex !important; }
+.d-sm-none { display: none !important; }
+.d-sm-block { display: block !important; }
+@media (min-width: 576px) { .d-sm-none { display: none !important; } .d-sm-block { display: block !important; } }
+@media (min-width: 768px) { .d-md-none { display: none !important; } .d-md-block { display: block !important; } }
+@media (min-width: 992px) { .d-lg-none { display: none !important; } .d-lg-block { display: block !important; } }
+
+/* 移动端最小触控尺寸 */
+.touch-target {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+/* 移动端表单行 - 垂直排列 */
+.form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.form-row > * {
+    flex: 1 1 auto;
+    min-width: 100px;
+}
+
+/* 响应式网格 */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+
+/* 文本截断 */
+.text-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* 间距工具 */
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1rem; }
+.mb-1 { margin-bottom: 0.5rem; }
+.mb-2 { margin-bottom: 1rem; }
+.gap-1 { gap: 0.5rem; }
+.gap-2 { gap: 1rem; }
+
+/* ============================================
+   响应式布局 - 平板 (≤768px)
+   ============================================ */
 @media (max-width: 768px) {
     .app-header {
-        padding: 1rem;
+        padding: 0.8rem 1rem;
+    }
+    .app-header h1 {
+        font-size: 1.2rem;
+    }
+    .app-header .subtitle {
+        font-size: 0.75rem;
     }
     .nav-tabs {
-        padding: 0 1rem;
+        padding: 0 0.5rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
     }
+    .nav-tabs::-webkit-scrollbar { display: none; }
     .nav-tab {
-        padding: 0.6rem 1rem;
-        font-size: 0.8rem;
+        padding: 0.6rem 0.9rem;
+        font-size: 0.78rem;
+        flex-shrink: 0;
     }
     .main-content {
+        padding: 0.8rem 1rem;
+    }
+    .card {
         padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .card h2 {
+        font-size: 1.05rem;
     }
     .calc-form {
         grid-template-columns: 1fr;
+        gap: 0.8rem;
     }
     .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.6rem;
+    }
+    .stat-card {
+        padding: 0.8rem;
+    }
+    .stat-card .stat-number {
+        font-size: 1.4rem;
+    }
+    .param-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.6rem;
+    }
+    .grid-2, .grid-3, .grid-4 {
         grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+    }
+    .form-row > * {
+        min-width: 80px;
+        flex: 1 1 45%;
+    }
+    .result-table {
+        font-size: 0.8rem;
+    }
+    .result-table th,
+    .result-table td {
+        padding: 0.4rem 0.5rem;
+    }
+    .schedule-table th,
+    .schedule-table td {
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+    .btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+    }
+    .checklist-item {
+        padding: 0.4rem 0.6rem;
+    }
+    .checklist-item label {
+        font-size: 0.8rem;
+    }
+    .checklist-item input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        min-width: 20px;
+    }
+    #photoGallery {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+    }
+    .project-selector {
+        max-width: 160px;
+        font-size: 0.78rem;
+    }
+}
+
+/* ============================================
+   响应式布局 - 手机 (≤576px)
+   ============================================ */
+@media (max-width: 576px) {
+    .app-header h1 {
+        font-size: 1rem;
+    }
+    .app-header .subtitle span:first-child {
+        display: none;
+    }
+    .nav-tab {
+        padding: 0.5rem 0.7rem;
+        font-size: 0.7rem;
+    }
+    .main-content {
+        padding: 0.5rem 0.6rem;
+    }
+    .card {
+        padding: 0.8rem;
+        border-radius: 6px;
+    }
+    .card h2 {
+        font-size: 0.95rem;
+        margin-bottom: 0.6rem;
+    }
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.4rem;
+    }
+    .stat-card {
+        padding: 0.6rem;
+    }
+    .stat-card .stat-number {
+        font-size: 1.2rem;
+    }
+    .stat-card .stat-label {
+        font-size: 0.65rem;
+    }
+    .param-grid {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    .grid-2, .grid-3, .grid-4 {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    .calc-form {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    .form-row {
+        flex-direction: column;
+        gap: 6px;
+    }
+    .form-row > * {
+        min-width: 100%;
+        flex: 1 1 100%;
+    }
+    .result-table {
+        font-size: 0.72rem;
+    }
+    .result-table th,
+    .result-table td {
+        padding: 0.3rem 0.4rem;
+    }
+    .schedule-table th,
+    .schedule-table td {
+        padding: 0.4rem;
+        font-size: 0.75rem;
+    }
+    .btn {
+        padding: 0.5rem 0.8rem;
+        font-size: 0.8rem;
+        width: 100%;
+        text-align: center;
+    }
+    .btn + .btn {
+        margin-top: 0.3rem;
+    }
+    .form-group input,
+    .form-group select {
+        padding: 0.5rem 0.6rem;
+        font-size: 0.85rem;
+    }
+    .form-group label {
+        font-size: 0.78rem;
+    }
+    .param-card {
+        padding: 0.7rem;
+    }
+    .param-card .param-item {
+        font-size: 0.78rem;
+    }
+    .checklist-category h3 {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.85rem;
+    }
+    .checklist-item {
+        padding: 0.35rem 0.5rem;
+    }
+    .checklist-item label {
+        font-size: 0.78rem;
+    }
+    .checklist-item input[type="checkbox"] {
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+    }
+    #photoGallery {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px !important;
+    }
+    .progress-bar {
+        height: 6px;
+    }
+    .project-selector {
+        max-width: 120px;
+        font-size: 0.72rem;
+    }
+    .phase-badge {
+        font-size: 0.65rem;
+        padding: 0.15rem 0.4rem;
+    }
+    .toast {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        font-size: 0.8rem;
+        text-align: center;
+    }
+}
+
+/* ============================================
+   响应式布局 - 极小屏 (≤400px)
+   ============================================ */
+@media (max-width: 400px) {
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+    }
+    .nav-tab {
+        padding: 0.4rem 0.5rem;
+        font-size: 0.65rem;
+    }
+    .result-table {
+        font-size: 0.68rem;
+    }
+    .result-table th,
+    .result-table td {
+        padding: 0.25rem 0.3rem;
+    }
+    #photoGallery {
+        grid-template-columns: 1fr !important;
     }
 }
 
 /* Print */
 @media print {
-    .nav-tabs, .app-header { display: none; }
+    .nav-tabs, .app-header, .no-print { display: none !important; }
     .tab-panel { display: block !important; }
-    .card { box-shadow: none; border: 1px solid #ddd; }
+    .card { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
+    .table-responsive { overflow: visible; }
 }
 
 /* ============================================
