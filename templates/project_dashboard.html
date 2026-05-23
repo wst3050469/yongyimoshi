@@ -127,7 +127,53 @@
     </div>
 
     <div class="card">
-    <h2>🌤️ 养护记录</h2>
+    <div class="card">
+        <h2>💰 成本预算</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:12px;" id="budgetSummary">
+            <div style="background:#f8f9fa;padding:10px;border-radius:8px;text-align:center;">
+                <div style="font-size:0.75rem;color:#888;">预算总额</div>
+                <div id="budgetPlanned" style="font-size:1.3rem;font-weight:700;color:#2980b9;">-</div>
+            </div>
+            <div style="background:#f8f9fa;padding:10px;border-radius:8px;text-align:center;">
+                <div style="font-size:0.75rem;color:#888;">实际支出</div>
+                <div id="budgetActual" style="font-size:1.3rem;font-weight:700;color:#e74c3c;">-</div>
+            </div>
+            <div style="background:#f8f9fa;padding:10px;border-radius:8px;text-align:center;">
+                <div style="font-size:0.75rem;color:#888;">偏差</div>
+                <div id="budgetVariance" style="font-size:1.3rem;font-weight:700;color:#27ae60;">-</div>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+            <select id="budgetCategory" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+                <option value="材料费">🧱 材料费</option>
+                <option value="人工费">👷 人工费</option>
+                <option value="设备费">🔧 设备费</option>
+                <option value="运输费">🚚 运输费</option>
+                <option value="其他">📦 其他</option>
+            </select>
+            <input id="budgetPlannedInput" type="number" placeholder="预算金额" style="width:120px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+            <input id="budgetDesc" type="text" placeholder="说明" style="flex:1;min-width:120px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+            <button class="btn btn-primary" onclick="addBudgetItem()">➕ 添加预算项</button>
+        </div>
+        <div id="budgetItems" style="font-size:0.85rem;"><p style="color:#999;">加载中...</p></div>
+    </div>
+
+    <div class="card">
+        <h2>⏱️ 工时记录</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            <select id="whWorker" style="padding:6px;border:1px solid #ddd;border-radius:6px;min-width:120px;">
+                <option value="">选择工人</option>
+            </select>
+            <input id="whDate" type="date" value="" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+            <input id="whHours" type="number" placeholder="工时" value="8" style="width:80px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+            <input id="whType" type="text" placeholder="施工类型" style="flex:1;min-width:80px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+            <button class="btn btn-primary" onclick="addWorkHours()">➕ 记录</button>
+        </div>
+        <div id="workHoursList" style="font-size:0.85rem;"><p style="color:#999;">加载中...</p></div>
+    </div>
+
+    <div class="card">
+        <h2>🌤️ 养护记录</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         <input id="cur_date" type="date" value="" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
         <select id="cur_weather" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
@@ -147,6 +193,85 @@
 </div>
 
 <script>
+function loadBudget() {
+    const pid = getProjectId();
+    if (!pid) return;
+    fetch('/api/budget/summary?project_id='+pid).then(r=>r.json()).then(data => {
+        document.getElementById('budgetPlanned').textContent = '¥'+(data.total_planned||0).toFixed(0);
+        document.getElementById('budgetActual').textContent = '¥'+(data.total_actual||0).toFixed(0);
+        const v = (data.total_planned||0) - (data.total_actual||0);
+        document.getElementById('budgetVariance').textContent = '¥'+v.toFixed(0);
+        document.getElementById('budgetVariance').style.color = v >= 0 ? '#27ae60' : '#e74c3c';
+    });
+    fetch('/api/budget?project_id='+pid).then(r=>r.json()).then(items => {
+        const div = document.getElementById('budgetItems');
+        if (items.length === 0) { div.innerHTML = '<p style="color:#999;">暂无预算项，请添加</p>'; return; }
+        div.innerHTML = '<table class="result-table"><thead><tr><th>类别</th><th>说明</th><th>预算</th><th>实际</th><th>偏差</th></tr></thead><tbody>'+
+            items.map(b => {
+                const diff = b.planned_amount - b.actual_amount;
+                return '<tr><td>'+b.category+'</td><td>'+(b.description||'-')+'</td><td>¥'+b.planned_amount.toFixed(0)+'</td><td>¥'+b.actual_amount.toFixed(0)+'</td><td style="color:'+(diff>=0?'#27ae60':'#e74c3c')+';">¥'+diff.toFixed(0)+'</td></tr>';
+            }).join('')+'</tbody></table>';
+    });
+}
+
+function addBudgetItem() {
+    const pid = getProjectId();
+    if (!pid) return;
+    const data = {
+        project_id: pid,
+        category: document.getElementById('budgetCategory').value,
+        planned_amount: parseFloat(document.getElementById('budgetPlannedInput').value) || 0,
+        description: document.getElementById('budgetDesc').value || '',
+    };
+    fetch('/api/budget', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d => {
+        if (d.status === 'ok') {
+            showToast('✅ 预算项已添加');
+            document.getElementById('budgetPlannedInput').value = '';
+            document.getElementById('budgetDesc').value = '';
+            loadBudget();
+        }
+    });
+}
+
+function loadWorkHours() {
+    const pid = getProjectId();
+    if (!pid) return;
+    fetch('/api/workers').then(r=>r.json()).then(workers => {
+        const sel = document.getElementById('whWorker');
+        sel.innerHTML = '<option value="">选择工人</option>'+workers.map(w => '<option value="'+w.id+'">'+w.name+' ('+w.role+')</option>').join('');
+    });
+    fetch('/api/work-hours?project_id='+pid).then(r=>r.json()).then(rows => {
+        const div = document.getElementById('workHoursList');
+        if (rows.length === 0) { div.innerHTML = '<p style="color:#999;">暂无工时记录</p>'; return; }
+        div.innerHTML = '<table class="result-table"><thead><tr><th>日期</th><th>工人</th><th>班组</th><th>工时</th><th>类型</th></tr></thead><tbody>'+
+            rows.slice(0,20).map(r => '<tr><td>'+r.work_date+'</td><td>'+r.worker_name+'</td><td>'+(r.team_name||'-')+'</td><td>'+r.hours+'h</td><td>'+(r.work_type||'-')+'</td></tr>').join('')+
+            '</tbody></table>';
+    });
+}
+
+function addWorkHours() {
+    const pid = getProjectId();
+    if (!pid) return;
+    const data = {
+        project_id: pid,
+        worker_id: parseInt(document.getElementById('whWorker').value),
+        work_date: document.getElementById('whDate').value || new Date().toISOString().split('T')[0],
+        hours: parseFloat(document.getElementById('whHours').value) || 8,
+        work_type: document.getElementById('whType').value || '',
+    };
+    if (!data.worker_id) { showToast('⚠️ 请选择工人', 'warning'); return; }
+    fetch('/api/work-hours', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d => {
+        if (d.status === 'ok') {
+            showToast('✅ 工时已记录');
+            document.getElementById('whHours').value = '8';
+            document.getElementById('whType').value = '';
+            loadWorkHours();
+        }
+    });
+}
+
 function loadCuringRecords() {
     const pid = getProjectId();
     if (!pid) return;
@@ -210,6 +335,8 @@ function deleteCuring(rid) {
 const origInit = window.initDashboard;
 window.initDashboard = function() {
     if (origInit) origInit();
+    loadBudget();
+    loadWorkHours();
     loadCuringRecords();
 };
 </script>

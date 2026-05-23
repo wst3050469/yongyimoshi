@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工人管理 - 永颐施工平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .worker-layout { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
+        @media (max-width:768px) { .worker-layout { grid-template-columns: 1fr; } }
+        .team-card { background:#f8f9fa; border:1px solid #e0e0e0; border-radius:10px; padding:14px; margin-bottom:10px; cursor:pointer; transition:all .2s; }
+        .team-card:hover { border-color:#2980b9; box-shadow:0 2px 12px rgba(41,128,185,0.1); }
+        .team-card.active { border-color:#2980b9; background:#e3f2fd; }
+        .team-card h4 { margin:0 0 4px; font-size:0.95rem; }
+        .team-card .meta { font-size:0.8rem; color:#888; }
+        .worker-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+        .worker-row:hover { background: #f8f9fa; }
+        .role-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .role-工人 { background: #e3f2fd; color: #1565c0; }
+        .role-班组长 { background: #fff3e0; color: #e65100; }
+        .role-技术员 { background: #e8f5e9; color: #2e7d32; }
+        .role-质检员 { background: #fce4ec; color: #c62828; }
+    </style>
+</head>
+<body>
+<header class="app-header no-print">
+    <h1>👷 工人与班组管理</h1>
+    <div class="subtitle">施工团队 · 班组分配 · 工时记录 | <a href="/" style="color:white;">← 返回主平台</a></div>
+</header>
+
+<main class="main-content">
+    <!-- 快速操作 -->
+    <div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-primary" onclick="openWorkerModal()">➕ 添加工人</button>
+        <button class="btn btn-success" onclick="openTeamModal()">👥 新建班组</button>
+        <span style="flex:1;"></span>
+        <span id="workerCount" style="font-size:0.85rem;color:#888;"></span>
+    </div>
+
+    <div class="worker-layout">
+        <!-- 班组列表 -->
+        <div class="card" style="padding:12px;">
+            <h2 style="font-size:1rem;margin-bottom:10px;">📋 班组</h2>
+            <div id="teamList"><p style="color:#999;font-size:0.85rem;">加载中...</p></div>
+        </div>
+
+        <!-- 工人列表 -->
+        <div class="card" style="padding:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <h2 style="font-size:1rem;margin:0;">👤 工人 <span id="teamFilterLabel" style="font-weight:400;font-size:0.8rem;color:#888;"></span></h2>
+                <input type="text" id="workerSearch" placeholder="搜索工人..." oninput="filterWorkers()" style="padding:6px 12px;border:1px solid #ddd;border-radius:6px;width:180px;">
+            </div>
+            <div id="workerList"><p style="color:#999;font-size:0.85rem;">请选择班组...</p></div>
+        </div>
+    </div>
+
+    <!-- 工时汇总 -->
+    <div class="card">
+        <h2>⏱️ 工时汇总</h2>
+        <div id="hoursSummary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;text-align:center;">
+            <div style="background:#f8f9fa;padding:12px;border-radius:8px;">
+                <div style="font-size:1.8rem;font-weight:700;color:#2980b9;">-</div>
+                <div style="font-size:0.8rem;color:#888;">总工时(小时)</div>
+            </div>
+            <div style="background:#f8f9fa;padding:12px;border-radius:8px;">
+                <div style="font-size:1.8rem;font-weight:700;color:#27ae60;">-</div>
+                <div style="font-size:0.8rem;color:#888;">总人工成本(元)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 工人弹窗 -->
+    <div class="modal-overlay" id="workerModal">
+        <div class="modal">
+            <h2 id="workerModalTitle">➕ 添加工人</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row"><label>姓名 *</label><input id="w_name"></div>
+                <div class="form-row"><label>电话</label><input id="w_phone"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row">
+                    <label>角色</label>
+                    <select id="w_role">
+                        <option value="工人">👷 工人</option>
+                        <option value="班组长">👥 班组长</option>
+                        <option value="技术员">🔧 技术员</option>
+                        <option value="质检员">✅ 质检员</option>
+                    </select>
+                </div>
+                <div class="form-row"><label>班组</label><select id="w_team"><option value="0">无班组</option></select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-row"><label>时薪(元/小时)</label><input id="w_rate" type="number" step="0.5" value="25"></div>
+            </div>
+            <div class="form-row"><label>备注</label><input id="w_notes"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+                <button class="btn" onclick="closeModal('workerModal')" style="background:#eee;">取消</button>
+                <button class="btn btn-primary" onclick="saveWorker()">💾 保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 班组弹窗 -->
+    <div class="modal-overlay" id="teamModal">
+        <div class="modal">
+            <h2>👥 新建班组</h2>
+            <div class="form-row"><label>班组名称 *</label><input id="t_name" placeholder="如: 抗裂砂浆一组"></div>
+            <div class="form-row"><label>班组长</label><input id="t_leader" placeholder="负责人姓名"></div>
+            <div class="form-row"><label>擅长工艺</label><input id="t_specialty" placeholder="如: 基层处理, 面层施工"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+                <button class="btn" onclick="closeModal('teamModal')" style="background:#eee;">取消</button>
+                <button class="btn btn-primary" onclick="saveTeam()">💾 保存</button>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+let selectedTeamId = 0;
+let editingWorkerId = null;
+
+function loadTeams() {
+    fetch('/api/teams')
+    .then(r => r.json())
+    .then(teams => {
+        const div = document.getElementById('teamList');
+        div.innerHTML = `
+            <div class="team-card ${selectedTeamId === 0 ? 'active' : ''}" onclick="filterByTeam(0)">
+                <h4>👥 全部工人</h4>
+                <div class="meta">所有班组</div>
+            </div>
+        ` + teams.map(t => `
+            <div class="team-card ${selectedTeamId === t.id ? 'active' : ''}" onclick="filterByTeam(${t.id})">
+                <div style="display:flex;justify-content:space-between;">
+                    <h4>${t.name}</h4>
+                    <span class="role-badge role-班组长" style="font-size:0.7rem;">${t.actual_members||0}人</span>
+                </div>
+                <div class="meta">👤 ${t.leader||'未设组长'} ${t.specialty ? '| '+t.specialty : ''}</div>
+            </div>
+        `).join('');
+
+        // 填充班组选择器
+        const sel = document.getElementById('w_team');
+        const val = sel.value;
+        sel.innerHTML = '<option value="0">无班组</option>' + teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        if (val) sel.value = val;
+    });
+}
+
+function filterByTeam(teamId) {
+    selectedTeamId = teamId;
+    document.getElementById('teamFilterLabel').textContent = teamId ? '' : '- 全部';
+    loadTeams();
+    loadWorkers();
+}
+
+function loadWorkers() {
+    const url = selectedTeamId ? `/api/workers?team_id=${selectedTeamId}` : '/api/workers';
+    fetch(url)
+    .then(r => r.json())
+    .then(workers => {
+        document.getElementById('workerCount').textContent = `共${workers.length}人`;
+        const div = document.getElementById('workerList');
+        if (workers.length === 0) {
+            div.innerHTML = '<p style="color:#999;font-size:0.85rem;text-align:center;padding:20px;">暂无工人</p>';
+            return;
+        }
+        div.innerHTML = workers.map(w => `
+            <div class="worker-row" data-name="${w.name}">
+                <div>
+                    <strong>${w.name}</strong>
+                    <span class="role-badge role-${w.role}">${w.role}</span>
+                    ${w.team_name ? `<span style="font-size:0.75rem;color:#888;">${w.team_name}</span>` : ''}
+                    <div style="font-size:0.75rem;color:#999;margin-top:2px;">
+                        📞 ${w.phone||'-'} | 💰 ¥${w.hourly_rate||0}/h
+                    </div>
+                </div>
+                <div style="display:flex;gap:4px;">
+                    <button class="btn" onclick="editWorker(${w.id})" style="font-size:0.75rem;padding:3px 10px;background:#e3f2fd;">✏️</button>
+                    <button class="btn" onclick="deleteWorker(${w.id})" style="font-size:0.75rem;padding:3px 10px;background:#fce4ec;color:#c62828;">🗑️</button>
+                </div>
+            </div>
+        `).join('');
+        filterWorkers();
+    });
+}
+
+function filterWorkers() {
+    const q = document.getElementById('workerSearch').value.trim();
+    document.querySelectorAll('.worker-row').forEach(row => {
+        const name = row.dataset.name || '';
+        row.style.display = (!q || name.includes(q)) ? 'flex' : 'none';
+    });
+}
+
+function openWorkerModal() {
+    editingWorkerId = null;
+    document.getElementById('workerModalTitle').textContent = '➕ 添加工人';
+    ['w_name','w_phone','w_notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('w_role').value = '工人';
+    document.getElementById('w_rate').value = '25';
+    document.getElementById('w_team').value = '0';
+    document.getElementById('workerModal').classList.add('active');
+}
+
+function saveWorker() {
+    const data = {
+        name: document.getElementById('w_name').value.trim(),
+        phone: document.getElementById('w_phone').value.trim(),
+        role: document.getElementById('w_role').value,
+        team_id: parseInt(document.getElementById('w_team').value),
+        hourly_rate: parseFloat(document.getElementById('w_rate').value) || 0,
+        notes: document.getElementById('w_notes').value.trim(),
+    };
+    if (!data.name) { showToast('⚠️ 姓名不能为空', 'warning'); return; }
+
+    const url = editingWorkerId ? `/api/workers/${editingWorkerId}` : '/api/workers';
+    const method = editingWorkerId ? 'PUT' : 'POST';
+    fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === 'ok') {
+            showToast(editingWorkerId ? '✅ 已更新' : '✅ 已添加');
+            closeModal('workerModal');
+            loadWorkers(); loadTeams();
+        }
+    });
+}
+
+function editWorker(wid) {
+    fetch(`/api/workers/${wid}`)
+    .then(r => r.json())
+    .then(w => {
+        editingWorkerId = w.id;
+        document.getElementById('workerModalTitle').textContent = '✏️ 编辑工人';
+        document.getElementById('w_name').value = w.name||'';
+        document.getElementById('w_phone').value = w.phone||'';
+        document.getElementById('w_role').value = w.role||'工人';
+        document.getElementById('w_team').value = w.team_id||0;
+        document.getElementById('w_rate').value = w.hourly_rate||0;
+        document.getElementById('w_notes').value = w.notes||'';
+        document.getElementById('workerModal').classList.add('active');
+    });
+}
+
+function deleteWorker(wid) {
+    if (!confirm('确定删除此工人？')) return;
+    fetch(`/api/workers/${wid}`, {method:'DELETE'})
+    .then(r => r.json())
+    .then(d => { showToast('🗑️ 已删除'); loadWorkers(); loadTeams(); });
+}
+
+function openTeamModal() {
+    document.getElementById('t_name').value = '';
+    document.getElementById('t_leader').value = '';
+    document.getElementById('t_specialty').value = '';
+    document.getElementById('teamModal').classList.add('active');
+}
+
+function saveTeam() {
+    const data = {
+        name: document.getElementById('t_name').value.trim(),
+        leader: document.getElementById('t_leader').value.trim(),
+        specialty: document.getElementById('t_specialty').value.trim(),
+    };
+    if (!data.name) { showToast('⚠️ 班组名称不能为空', 'warning'); return; }
+    fetch('/api/teams', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === 'ok') {
+            showToast('✅ 班组已创建');
+            closeModal('teamModal');
+            loadTeams();
+        }
+    });
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+}
+
+// 点击遮罩关闭
+document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadTeams();
+    loadWorkers();
+});
+</script>
+</body>
+</html>

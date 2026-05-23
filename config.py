@@ -15,7 +15,7 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, 'system_config.json')
 DEFAULT_CONFIG = {
     "system": {
         "name": "永颐无机磨石 · 施工管理平台",
-        "version": "3.8.0",
+        "version": "3.9.0",
         "company": "浙江永颐装饰工程有限公司",
         "maintainer": "",
         "language": "zh-CN",

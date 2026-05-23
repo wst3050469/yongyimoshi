@@ -1594,7 +1594,17 @@ function saveQualityTests() {
 // ============================================================
 // 初始化
 // ============================================================
-document.addEventListener('DOMContentLoaded', function() {
+function updateNotifBadge() {
+    fetch('/api/notifications/unread-count').then(r=>r.json()).then(d => {
+        const badge = document.getElementById('notifBadge');
+        if (badge) {
+            if (d.count > 0) { badge.style.display = 'inline'; badge.textContent = d.count; }
+            else { badge.style.display = 'none'; }
+        }
+    });
+}
+setInterval(updateNotifBadge, 30000);
+document.addEventListener('DOMContentLoaded', function() { updateNotifBadge();
     initTheme();
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('inputStartDate').value = today;

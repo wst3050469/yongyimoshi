@@ -704,6 +704,257 @@ def print_report(pid):
 
 
 # ============================================================
+# 班组 & 工人管理
+# ============================================================
+
+from database import (
+    add_team, get_teams, delete_team,
+    add_worker, get_workers, get_worker, update_worker, delete_worker,
+    add_work_hours, get_work_hours, get_work_hours_summary,
+    add_budget_item, get_budget_items, get_budget_summary,
+    update_budget_item, delete_budget_item,
+    add_notification, get_notifications, mark_notification_read,
+    mark_all_notifications_read, delete_notification,
+    create_curing_reminder, create_quality_test_reminder,
+)
+
+
+@app.route('/workers')
+def workers_page():
+    """工人管理页面"""
+    return render_template('workers.html')
+
+
+@app.route('/api/teams', methods=['GET'])
+def api_teams_list():
+    return jsonify(get_teams())
+
+
+@app.route('/api/teams', methods=['POST'])
+def api_teams_add():
+    data = request.get_json()
+    if not data or not data.get('name'):
+        return api_error("班组名称不能为空")
+    tid = add_team(name=data['name'], leader=data.get('leader', ''),
+                   specialty=data.get('specialty', ''))
+    return jsonify({"status": "ok", "id": tid})
+
+
+@app.route('/api/teams/<int:tid>', methods=['DELETE'])
+def api_teams_delete(tid):
+    delete_team(tid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/workers', methods=['GET'])
+def api_workers_list():
+    team_id = request.args.get('team_id', 0, type=int)
+    return jsonify(get_workers(team_id))
+
+
+@app.route('/api/workers', methods=['POST'])
+def api_workers_add():
+    data = request.get_json()
+    if not data or not data.get('name'):
+        return api_error("工人姓名不能为空")
+    wid = add_worker(
+        name=data['name'], phone=data.get('phone', ''),
+        role=data.get('role', '工人'),
+        team_id=int(data.get('team_id', 0)),
+        hourly_rate=float(data.get('hourly_rate', 0)),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": wid})
+
+
+@app.route('/api/workers/<int:wid>', methods=['GET'])
+def api_workers_get(wid):
+    w = get_worker(wid)
+    if not w:
+        return api_error("工人不存在")
+    return jsonify(w)
+
+
+@app.route('/api/workers/<int:wid>', methods=['PUT'])
+def api_workers_update(wid):
+    data = request.get_json() or {}
+    ok = update_worker(wid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/workers/<int:wid>', methods=['DELETE'])
+def api_workers_delete(wid):
+    ok = delete_worker(wid)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+# ============================================================
+# 工时管理
+# ============================================================
+
+@app.route('/api/work-hours', methods=['GET'])
+def api_work_hours_list():
+    project_id = request.args.get('project_id', 0, type=int)
+    if not project_id:
+        return api_error("缺少 project_id")
+    return jsonify(get_work_hours(project_id))
+
+
+@app.route('/api/work-hours', methods=['POST'])
+def api_work_hours_add():
+    data = request.get_json()
+    if not data or not data.get('project_id') or not data.get('worker_id'):
+        return api_error("缺少 project_id 或 worker_id")
+    wid = add_work_hours(
+        project_id=int(data['project_id']),
+        worker_id=int(data['worker_id']),
+        work_date=data.get('work_date', ''),
+        hours=float(data.get('hours', 8)),
+        work_type=data.get('work_type', ''),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": wid})
+
+
+@app.route('/api/work-hours/summary')
+def api_work_hours_summary():
+    project_id = request.args.get('project_id', 0, type=int)
+    if not project_id:
+        return api_error("缺少 project_id")
+    return jsonify(get_work_hours_summary(project_id))
+
+
+# ============================================================
+# 成本预算管理
+# ============================================================
+
+@app.route('/api/budget', methods=['GET'])
+def api_budget_list():
+    project_id = request.args.get('project_id', 0, type=int)
+    if not project_id:
+        return api_error("缺少 project_id")
+    return jsonify(get_budget_items(project_id))
+
+
+@app.route('/api/budget', methods=['POST'])
+def api_budget_add():
+    data = request.get_json()
+    if not data or not data.get('project_id') or not data.get('category'):
+        return api_error("缺少 project_id 或 category")
+    bid = add_budget_item(
+        project_id=int(data['project_id']),
+        category=data['category'],
+        planned_amount=float(data.get('planned_amount', 0)),
+        actual_amount=float(data.get('actual_amount', 0)),
+        description=data.get('description', ''),
+    )
+    return jsonify({"status": "ok", "id": bid})
+
+
+@app.route('/api/budget/<int:bid>', methods=['PUT'])
+def api_budget_update(bid):
+    data = request.get_json() or {}
+    ok = update_budget_item(bid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/budget/<int:bid>', methods=['DELETE'])
+def api_budget_delete(bid):
+    delete_budget_item(bid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/budget/summary')
+def api_budget_summary():
+    project_id = request.args.get('project_id', 0, type=int)
+    if not project_id:
+        return api_error("缺少 project_id")
+    return jsonify(get_budget_summary(project_id))
+
+
+# ============================================================
+# 通知提醒系统
+# ============================================================
+
+@app.route('/notifications')
+def notifications_page():
+    """通知中心页面"""
+    return render_template('notifications.html')
+
+
+@app.route('/api/notifications', methods=['GET'])
+def api_notifications_list():
+    project_id = request.args.get('project_id', 0, type=int)
+    unread_only = request.args.get('unread_only', '').lower() in ('1', 'true', 'yes')
+    return jsonify(get_notifications(project_id, unread_only))
+
+
+@app.route('/api/notifications', methods=['POST'])
+def api_notifications_add():
+    """手动创建通知"""
+    data = request.get_json()
+    if not data or not data.get('project_id') or not data.get('title'):
+        return api_error("缺少 project_id 或 title")
+    nid = add_notification(
+        project_id=int(data['project_id']),
+        notif_type=data.get('type', 'manual'),
+        title=data['title'],
+        message=data.get('message', ''),
+        due_date=data.get('due_date', ''),
+    )
+    return jsonify({"status": "ok", "id": nid})
+
+
+@app.route('/api/notifications/remind/curing', methods=['POST'])
+def api_notify_curing():
+    """创建养护提醒"""
+    data = request.get_json()
+    pid = int(data.get('project_id', 0))
+    if not pid:
+        return api_error("缺少 project_id")
+    nid = create_curing_reminder(pid)
+    return jsonify({"status": "ok", "id": nid})
+
+
+@app.route('/api/notifications/remind/test', methods=['POST'])
+def api_notify_test():
+    """创建检测提醒"""
+    data = request.get_json()
+    pid = int(data.get('project_id', 0))
+    if not pid:
+        return api_error("缺少 project_id")
+    nid = create_quality_test_reminder(pid)
+    return jsonify({"status": "ok", "id": nid})
+
+
+@app.route('/api/notifications/<int:nid>/read', methods=['POST'])
+def api_notifications_read(nid):
+    mark_notification_read(nid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/notifications/read-all', methods=['POST'])
+def api_notifications_read_all():
+    data = request.get_json() or {}
+    project_id = int(data.get('project_id', 0))
+    count = mark_all_notifications_read(project_id)
+    return jsonify({"status": "ok", "marked_read": count})
+
+
+@app.route('/api/notifications/<int:nid>', methods=['DELETE'])
+def api_notifications_delete(nid):
+    delete_notification(nid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/notifications/unread-count')
+def api_notifications_unread_count():
+    """未读通知数量（全局首页角标用）"""
+    notifs = get_notifications(project_id=0, unread_only=True)
+    return jsonify({"count": len(notifs)})
+
+
+# ============================================================
 # 错误处理器
 # ============================================================
 

@@ -140,6 +140,61 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS teams (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            leader TEXT DEFAULT '',
+            member_count INTEGER DEFAULT 0,
+            specialty TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS workers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT DEFAULT '',
+            role TEXT DEFAULT '工人',
+            team_id INTEGER DEFAULT 0,
+            hourly_rate REAL DEFAULT 0,
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS work_hours (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            worker_id INTEGER NOT NULL,
+            work_date TEXT NOT NULL,
+            hours REAL DEFAULT 8,
+            work_type TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS budget_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            planned_amount REAL DEFAULT 0,
+            actual_amount REAL DEFAULT 0,
+            description TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT DEFAULT '',
+            is_read INTEGER DEFAULT 0,
+            due_date TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
     """)
 
     conn.commit()
@@ -686,6 +741,391 @@ def delete_curing_record(rid: int) -> bool:
 
 
 # ============================================================
+# 班组管理
+# ============================================================
+
+def add_team(name: str, leader: str = "", specialty: str = "") -> int:
+    """添加班组"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO teams (name, leader, specialty) VALUES (?, ?, ?)",
+                   (name, leader, specialty))
+    tid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return tid
+
+
+def get_teams() -> List[Dict]:
+    """获取所有班组"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT t.*, (SELECT COUNT(*) FROM workers WHERE team_id = t.id) as actual_members
+        FROM teams t ORDER BY t.id
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_team(tid: int) -> bool:
+    """删除班组"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE workers SET team_id = 0 WHERE team_id = ?", (tid,))
+    cursor.execute("DELETE FROM teams WHERE id = ?", (tid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# 工人管理
+# ============================================================
+
+def add_worker(name: str, phone: str = "", role: str = "工人",
+               team_id: int = 0, hourly_rate: float = 0, notes: str = "") -> int:
+    """添加工人"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO workers (name, phone, role, team_id, hourly_rate, notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (name, phone, role, team_id, hourly_rate, notes))
+    wid = cursor.lastrowid
+    # 更新班组人数
+    if team_id:
+        cursor.execute("UPDATE teams SET member_count = (SELECT COUNT(*) FROM workers WHERE team_id = ?) WHERE id = ?",
+                       (team_id, team_id))
+    conn.commit()
+    conn.close()
+    return wid
+
+
+def get_workers(team_id: int = 0) -> List[Dict]:
+    """获取工人列表"""
+    conn = get_db()
+    cursor = conn.cursor()
+    if team_id:
+        rows = cursor.execute("""
+            SELECT w.*, t.name as team_name FROM workers w
+            LEFT JOIN teams t ON w.team_id = t.id
+            WHERE w.team_id = ? ORDER BY w.name
+        """, (team_id,)).fetchall()
+    else:
+        rows = cursor.execute("""
+            SELECT w.*, t.name as team_name FROM workers w
+            LEFT JOIN teams t ON w.team_id = t.id
+            ORDER BY w.team_id, w.name
+        """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_worker(wid: int) -> Optional[Dict]:
+    """获取单个工人"""
+    conn = get_db()
+    cursor = conn.cursor()
+    row = cursor.execute("""
+        SELECT w.*, t.name as team_name FROM workers w
+        LEFT JOIN teams t ON w.team_id = t.id WHERE w.id = ?
+    """, (wid,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_worker(wid: int, **kwargs) -> bool:
+    """更新工人信息"""
+    allowed = ['name', 'phone', 'role', 'team_id', 'hourly_rate', 'notes']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [wid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE workers SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_worker(wid: int) -> bool:
+    """删除工人"""
+    conn = get_db()
+    cursor = conn.cursor()
+    worker = cursor.execute("SELECT team_id FROM workers WHERE id = ?", (wid,)).fetchone()
+    cursor.execute("DELETE FROM workers WHERE id = ?", (wid,))
+    if worker and worker['team_id']:
+        cursor.execute("UPDATE teams SET member_count = (SELECT COUNT(*) FROM workers WHERE team_id = ?) WHERE id = ?",
+                       (worker['team_id'], worker['team_id']))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# 工时管理
+# ============================================================
+
+def add_work_hours(project_id: int, worker_id: int, work_date: str = "",
+                   hours: float = 8, work_type: str = "", notes: str = "") -> int:
+    """添加工时记录"""
+    if not work_date:
+        work_date = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO work_hours (project_id, worker_id, work_date, hours, work_type, notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (project_id, worker_id, work_date, hours, work_type, notes))
+    wid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return wid
+
+
+def get_work_hours(project_id: int) -> List[Dict]:
+    """获取项目的工时记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT wh.*, w.name as worker_name, w.role, t.name as team_name
+        FROM work_hours wh
+        JOIN workers w ON wh.worker_id = w.id
+        LEFT JOIN teams t ON w.team_id = t.id
+        WHERE wh.project_id = ?
+        ORDER BY wh.work_date DESC, wh.id DESC
+    """, (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_work_hours_summary(project_id: int) -> Dict:
+    """获取项目工时汇总"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT wh.work_type, COUNT(DISTINCT wh.worker_id) as worker_count,
+               SUM(wh.hours) as total_hours,
+               SUM(wh.hours * w.hourly_rate) as total_cost
+        FROM work_hours wh
+        JOIN workers w ON wh.worker_id = w.id
+        WHERE wh.project_id = ?
+        GROUP BY wh.work_type
+    """, (project_id,)).fetchall()
+
+    total_hours = 0
+    total_cost = 0
+    details = []
+    for r in rows:
+        d = dict(r)
+        total_hours += d['total_hours'] or 0
+        total_cost += d['total_cost'] or 0
+        details.append(d)
+
+    conn.close()
+    return {"total_hours": round(total_hours, 1), "total_cost": round(total_cost, 2),
+            "details": details}
+
+
+# ============================================================
+# 成本预算管理
+# ============================================================
+
+def add_budget_item(project_id: int, category: str, planned_amount: float = 0,
+                    actual_amount: float = 0, description: str = "") -> int:
+    """添加预算项"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO budget_items (project_id, category, planned_amount, actual_amount, description)
+        VALUES (?, ?, ?, ?, ?)
+    """, (project_id, category, planned_amount, actual_amount, description))
+    bid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return bid
+
+
+def get_budget_items(project_id: int) -> List[Dict]:
+    """获取项目的预算项"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM budget_items WHERE project_id = ? ORDER BY id
+    """, (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_budget_summary(project_id: int) -> Dict:
+    """获取项目预算汇总"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT category,
+               SUM(planned_amount) as planned,
+               SUM(actual_amount) as actual
+        FROM budget_items WHERE project_id = ?
+        GROUP BY category ORDER BY category
+    """, (project_id,)).fetchall()
+
+    categories = []
+    total_planned = 0
+    total_actual = 0
+    for r in rows:
+        d = dict(r)
+        categories.append(d)
+        total_planned += d['planned'] or 0
+        total_actual += d['actual'] or 0
+
+    conn.close()
+    return {
+        "total_planned": round(total_planned, 2),
+        "total_actual": round(total_actual, 2),
+        "variance": round(total_planned - total_actual, 2),
+        "categories": categories,
+    }
+
+
+def update_budget_item(bid: int, **kwargs) -> bool:
+    """更新预算项"""
+    allowed = ['planned_amount', 'actual_amount', 'description']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [bid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE budget_items SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_budget_item(bid: int) -> bool:
+    """删除预算项"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM budget_items WHERE id = ?", (bid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# 通知提醒系统
+# ============================================================
+
+def add_notification(project_id: int, notif_type: str, title: str,
+                     message: str = "", due_date: str = "") -> int:
+    """添加通知"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO notifications (project_id, type, title, message, due_date)
+        VALUES (?, ?, ?, ?, ?)
+    """, (project_id, notif_type, title, message, due_date))
+    nid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return nid
+
+
+def get_notifications(project_id: int = 0, unread_only: bool = False) -> List[Dict]:
+    """获取通知列表"""
+    conn = get_db()
+    cursor = conn.cursor()
+    if project_id:
+        if unread_only:
+            rows = cursor.execute("""
+                SELECT n.*, p.name as project_name FROM notifications n
+                JOIN projects p ON n.project_id = p.id
+                WHERE n.project_id = ? AND n.is_read = 0
+                ORDER BY n.created_at DESC
+            """, (project_id,)).fetchall()
+        else:
+            rows = cursor.execute("""
+                SELECT n.*, p.name as project_name FROM notifications n
+                JOIN projects p ON n.project_id = p.id
+                WHERE n.project_id = ?
+                ORDER BY n.created_at DESC LIMIT 50
+            """, (project_id,)).fetchall()
+    else:
+        if unread_only:
+            rows = cursor.execute("""
+                SELECT n.*, p.name as project_name FROM notifications n
+                JOIN projects p ON n.project_id = p.id
+                WHERE n.is_read = 0 ORDER BY n.created_at DESC
+            """).fetchall()
+        else:
+            rows = cursor.execute("""
+                SELECT n.*, p.name as project_name FROM notifications n
+                JOIN projects p ON n.project_id = p.id
+                ORDER BY n.created_at DESC LIMIT 100
+            """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def mark_notification_read(nid: int) -> bool:
+    """标记通知为已读"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE notifications SET is_read = 1 WHERE id = ?", (nid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def mark_all_notifications_read(project_id: int = 0) -> int:
+    """标记所有通知为已读"""
+    conn = get_db()
+    cursor = conn.cursor()
+    if project_id:
+        cursor.execute("UPDATE notifications SET is_read = 1 WHERE project_id = ? AND is_read = 0",
+                       (project_id,))
+    else:
+        cursor.execute("UPDATE notifications SET is_read = 1 WHERE is_read = 0")
+    count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return count
+
+
+def delete_notification(nid: int) -> bool:
+    """删除通知"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM notifications WHERE id = ?", (nid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def create_curing_reminder(project_id: int) -> int:
+    """自动创建养护提醒"""
+    project = get_project(project_id)
+    if not project:
+        return 0
+    title = f"🔔 {project['name']} - 养护提醒"
+    message = f"项目「{project['name']}」已达到养护阶段，请检查养护措施并记录养护日志。"
+    return add_notification(project_id, "curing_reminder", title, message)
+
+
+def create_quality_test_reminder(project_id: int) -> int:
+    """自动创建质量检测提醒"""
+    project = get_project(project_id)
+    if not project:
+        return 0
+    title = f"🧪 {project['name']} - 质量检测提醒"
+    message = f"项目「{project['name']}」需进行质量检测，请安排检测并记录结果。"
+    return add_notification(project_id, "test_reminder", title, message)
+
+
+# ============================================================
 # 数据导出
 # ============================================================
 
@@ -723,6 +1163,18 @@ def export_project_data(project_id: int) -> Dict:
         "SELECT * FROM curing_records WHERE project_id = ? ORDER BY record_date",
         (project_id,)).fetchall()]
 
+    # 预算
+    budget = [dict(r) for r in cursor.execute(
+        "SELECT * FROM budget_items WHERE project_id = ? ORDER BY id",
+        (project_id,)).fetchall()]
+
+    # 工时记录
+    work_hours_data = [dict(r) for r in cursor.execute(
+        "SELECT wh.*, w.name as worker_name FROM work_hours wh "
+        "JOIN workers w ON wh.worker_id = w.id "
+        "WHERE wh.project_id = ? ORDER BY wh.work_date",
+        (project_id,)).fetchall()]
+
     conn.close()
 
     # 材料用量计算
@@ -731,7 +1183,7 @@ def export_project_data(project_id: int) -> Dict:
     purchase = calc_purchase_list(calc['summary'])
 
     return {
-        "export_version": "3.8.0",
+        "export_version": "3.9.0",
         "exported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "project": dict(project),
         "statistics": {
@@ -742,6 +1194,8 @@ def export_project_data(project_id: int) -> Dict:
             "passed_count": sum(1 for q in quality if q['is_pass']),
             "material_records": len(materials),
             "curing_records": len(curing),
+            "budget_items": len(budget),
+            "work_hours": len(work_hours_data),
             "total_material_kg": calc['total_weight_kg'],
         },
         "daily_logs": logs,
@@ -749,6 +1203,8 @@ def export_project_data(project_id: int) -> Dict:
         "quality_tests": quality,
         "material_records": materials,
         "curing_records": curing,
+        "budget_items": budget,
+        "work_hours": work_hours_data,
         "material_calculation": calc,
         "purchase_list": purchase,
     }
@@ -976,6 +1432,14 @@ def optimize_database():
         "CREATE INDEX IF NOT EXISTS idx_supplier_prices_material ON supplier_prices(material_name)",
         "CREATE INDEX IF NOT EXISTS idx_curing_project ON curing_records(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_curing_date ON curing_records(record_date)",
+        "CREATE INDEX IF NOT EXISTS idx_workers_team ON workers(team_id)",
+        "CREATE INDEX IF NOT EXISTS idx_work_hours_project ON work_hours(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_work_hours_worker ON work_hours(worker_id)",
+        "CREATE INDEX IF NOT EXISTS idx_work_hours_date ON work_hours(work_date)",
+        "CREATE INDEX IF NOT EXISTS idx_budget_project ON budget_items(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_budget_category ON budget_items(category)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_project ON notifications(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)",
     ]
     for idx in indexes:
         cursor.execute(idx)
@@ -996,7 +1460,8 @@ def get_db_stats() -> Dict:
     stats = {}
     tables = ["projects", "daily_logs", "quality_tests", "checklist_state",
               "material_records", "photos", "suppliers", "supplier_prices",
-              "curing_records"]
+              "curing_records", "workers", "teams", "work_hours",
+              "budget_items", "notifications"]
     for table in tables:
         count = cursor.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         stats[table] = count
@@ -1076,6 +1541,15 @@ def import_project(data: Dict) -> Dict:
               float(mat.get('quantity_packages', 0)), float(mat.get('unit_price', 0)),
               float(mat.get('total_cost', 0)), mat.get('record_date', '')))
         import_count["materials"] += 1
+
+    # 导入预算
+    for bi in data.get('budget_items', []):
+        cursor.execute("""
+            INSERT INTO budget_items (project_id, category, planned_amount, actual_amount, description)
+            VALUES (?, ?, ?, ?, ?)
+        """, (pid, bi.get('category', ''), float(bi.get('planned_amount', 0)),
+              float(bi.get('actual_amount', 0)), bi.get('description', '')))
+        import_count["budget"] = import_count.get("budget", 0) + 1
 
     # 导入养护记录
     for cr in data.get('curing_records', []):

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通知中心 - 永颐施工平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .notif-card { display: flex; gap: 12px; padding: 14px 16px; border: 1px solid #e8e8e8; border-radius: 10px; margin-bottom: 8px; transition: all .2s; }
+        .notif-card:hover { border-color: #2980b9; background: #f8fbff; }
+        .notif-card.unread { border-left: 4px solid #2980b9; background: #f0f7ff; }
+        .notif-icon { font-size: 1.5rem; width: 40px; text-align: center; padding-top: 2px; }
+        .notif-body { flex: 1; }
+        .notif-body h4 { margin: 0 0 4px; font-size: 0.95rem; }
+        .notif-body p { margin: 0; font-size: 0.85rem; color: #666; line-height: 1.5; }
+        .notif-meta { font-size: 0.75rem; color: #999; margin-top: 6px; display: flex; gap: 12px; }
+        .notif-meta .tag { display: inline-block; padding: 1px 8px; border-radius: 8px; font-size: 0.7rem; }
+        .tag-curing { background: #e3f2fd; color: #1565c0; }
+        .tag-test { background: #fce4ec; color: #c62828; }
+        .tag-schedule { background: #fff3e0; color: #e65100; }
+        .tag-budget { background: #e8f5e9; color: #2e7d32; }
+        .tag-manual { background: #f3e5f5; color: #6a1b9a; }
+    </style>
+</head>
+<body>
+<header class="app-header no-print">
+    <h1>🔔 通知中心</h1>
+    <div class="subtitle">施工提醒 · 检测提醒 · 系统通知 | <a href="/" style="color:white;">← 返回主平台</a></div>
+</header>
+
+<main class="main-content">
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>
+            <h2 style="margin:0;display:inline;">所有通知</h2>
+            <span id="notifCount" style="font-size:0.9rem;color:#888;margin-left:8px;"></span>
+        </div>
+        <div class="action-bar" style="margin:0;">
+            <button class="btn" onclick="filterUnread()" id="filterBtn" style="background:#e3f2fd;color:#1565c0;">🔵 未读</button>
+            <button class="btn btn-primary" onclick="markAllRead()">✅ 全部已读</button>
+        </div>
+    </div>
+
+    <div id="notifList"><p style="text-align:center;padding:40px;color:#999;">加载中...</p></div>
+</main>
+
+<script>
+let showUnreadOnly = false;
+
+function loadNotifications() {
+    const url = showUnreadOnly ? '/api/notifications?unread_only=1' : '/api/notifications';
+    fetch(url)
+    .then(r => r.json())
+    .then(notifs => {
+        document.getElementById('notifCount').textContent = `(共${notifs.length}条${showUnreadOnly ? '未读' : ''})`;
+        const div = document.getElementById('notifList');
+        if (notifs.length === 0) {
+            div.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#999;"><div style="font-size:3rem;margin-bottom:12px;">🔔</div><p>暂无通知</p></div>';
+            return;
+        }
+        div.innerHTML = notifs.map(n => {
+            const typeIcons = {curing_reminder:'💧', test_reminder:'🧪', schedule_alert:'📅', budget_alert:'💰', manual:'📝'};
+            const icon = typeIcons[n.type] || '🔔';
+            const isOverdue = n.due_date && n.due_date < new Date().toISOString().split('T')[0];
+            return `
+                <div class="notif-card ${n.is_read ? '' : 'unread'}" onclick="markRead(${n.id}, this)">
+                    <div class="notif-icon">${icon}</div>
+                    <div class="notif-body">
+                        <h4>${n.title} ${isOverdue ? '<span style="color:#e74c3c;font-size:0.75rem;">⚠️ 已逾期</span>' : ''}</h4>
+                        <p>${n.message || '无详细消息'}</p>
+                        <div class="notif-meta">
+                            <span>📋 ${n.project_name}</span>
+                            <span class="tag tag-${n.type}">${n.type}</span>
+                            <span>🕐 ${n.created_at}</span>
+                            ${n.due_date ? `<span>📅 截止: ${n.due_date}</span>` : ''}
+                            ${n.is_read ? '' : '<span style="color:#2980b9;">● 未读</span>'}
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        ${n.is_read ? '' : `<button onclick="event.stopPropagation(); markRead(${n.id}, this.closest('.notif-card'))" style="background:none;border:none;color:#2980b9;cursor:pointer;font-size:0.8rem;">✓ 已读</button>`}
+                        <button onclick="event.stopPropagation(); deleteNotif(${n.id})" style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:0.8rem;">🗑️</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    });
+}
+
+function markRead(nid, el) {
+    fetch(`/api/notifications/${nid}/read`, {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+        if (el) {
+            el.classList.remove('unread');
+            const btn = el.querySelector('button');
+            if (btn && btn.textContent.includes('已读')) btn.remove();
+        }
+        // 如果在未读过滤模式下，淡出移除
+        if (showUnreadOnly && el) {
+            el.style.transition = 'opacity 0.3s';
+            el.style.opacity = '0';
+            setTimeout(() => { loadNotifications(); }, 300);
+        }
+    });
+}
+
+function markAllRead() {
+    fetch('/api/notifications/read-all', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+        showToast(`✅ ${d.marked_read}条通知已标记已读`);
+        loadNotifications();
+    });
+}
+
+function deleteNotif(nid) {
+    if (!confirm('确定删除此通知？')) return;
+    fetch(`/api/notifications/${nid}`, {method:'DELETE'})
+    .then(r => r.json())
+    .then(d => { loadNotifications(); });
+}
+
+function filterUnread() {
+    showUnreadOnly = !showUnreadOnly;
+    document.getElementById('filterBtn').textContent = showUnreadOnly ? '📋 全部' : '🔵 未读';
+    document.getElementById('filterBtn').style.background = showUnreadOnly ? '#eee' : '#e3f2fd';
+    loadNotifications();
+}
+
+document.addEventListener('DOMContentLoaded', loadNotifications);
+</script>
+</body>
+</html>
