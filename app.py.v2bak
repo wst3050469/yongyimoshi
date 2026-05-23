@@ -1,0 +1,195 @@
+"""
+永颐无机磨石 - 施工管理Web应用
+Flask应用，提供材料计算、进度计划、检查清单等功能
+"""
+
+from flask import Flask, render_template, request, jsonify
+from materials_calc import calculate_all, generate_schedule, BASE_LAYER, SURFACE_LAYER
+import json
+
+app = Flask(__name__)
+
+# 检查清单数据
+
+# ============================================================
+# 新增API: 采购清单 & 施工日志
+# ============================================================
+
+@app.route('/api/purchase', methods=['POST'])
+def api_purchase():
+    """生成采购清单API"""
+    from materials_calc import calc_purchase_list, PACKAGING_SPECS
+    data = request.get_json()
+    area = float(data.get('area', 100))
+    thickness_base = float(data.get('thickness_base', 50))
+    thickness_surface = float(data.get('thickness_surface', 15))
+
+    result = calculate_all(area, thickness_base, thickness_surface)
+    purchase_list = calc_purchase_list(result["summary"])
+
+    return jsonify({
+        "area": area,
+        "purchase_list": purchase_list,
+        "packaging_specs": PACKAGING_SPECS,
+    })
+
+
+@app.route('/api/daily-log', methods=['POST'])
+def api_daily_log():
+    """保存施工日志"""
+    from materials_calc import generate_daily_log
+    data = request.get_json()
+    log = generate_daily_log(
+        project_name=data.get('project', '默认项目'),
+        area=float(data.get('area', 100)),
+        date=data.get('date', ''),
+        weather=data.get('weather', '晴'),
+        temperature=data.get('temperature', '20~25℃'),
+        workers=int(data.get('workers', 5)),
+        work_content=data.get('work_content', ''),
+        issues=data.get('issues', '无'),
+        materials_used=data.get('materials_used', ''),
+    )
+    # 保存到文件（简单实现）
+    import json, os
+    log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"daily_logs.json")
+    logs = []
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                logs = json.load(f)
+        except:
+            logs = []
+    logs.append(log)
+    with open(log_file, 'w', encoding='utf-8') as f:
+        json.dump(logs, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok", "log": log})
+
+
+@app.route('/api/daily-logs', methods=['GET'])
+def api_daily_logs():
+    """获取所有施工日志"""
+    import json, os
+    log_file = os.path.join(os.path.dirname(__file__), 'logs', 'daily_logs.json')
+    if os.path.exists(log_file):
+        with open(log_file, 'r', encoding='utf-8') as f:
+            logs = json.load(f)
+        return jsonify(logs)
+    return jsonify([])
+
+
+@app.route('/api/checklist-save', methods=['POST'])
+def api_checklist_save():
+    """保存检查清单状态到服务器"""
+    import json, os
+    data = request.get_json()
+    save_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    os.makedirs(save_dir, exist_ok=True)
+    with open(os.path.join(save_dir, 'checklist_state.json'), 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/checklist-load', methods=['GET'])
+def api_checklist_load():
+    """从服务器加载检查清单状态"""
+    import json, os
+    state_file = os.path.join(os.path.dirname(__file__), 'logs', 'checklist_state.json')
+    if os.path.exists(state_file):
+        with open(state_file, 'r', encoding='utf-8') as f:
+            return jsonify(json.load(f))
+    return jsonify(None)
+
+
+
+# ============================================================
+# 新增API: 成本估算 & 质量检测
+# ============================================================
+
+@app.route('/api/cost', methods=['POST'])
+def api_cost():
+    from materials_calc import calc_cost, calc_purchase_list
+    data = request.get_json()
+    area = float(data.get('area', 100))
+    thickness_base = float(data.get('thickness_base', 50))
+    thickness_surface = float(data.get('thickness_surface', 15))
+    result = calculate_all(area, thickness_base, thickness_surface)
+    purchase_list = calc_purchase_list(result["summary"])
+    cost = calc_cost(area, purchase_list)
+    return jsonify(cost)
+
+
+@app.route('/api/quality-tests', methods=['GET', 'POST'])
+def api_quality_tests():
+    import json, os
+    from materials_calc import QUALITY_TESTS
+    save_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    os.makedirs(save_dir, exist_ok=True)
+    state_file = os.path.join(save_dir, 'quality_tests.json')
+
+    if request.method == 'POST':
+        data = request.get_json()
+        with open(state_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return jsonify({"status": "ok"})
+
+    # GET
+    results = {}
+    if os.path.exists(state_file):
+        with open(state_file, 'r', encoding='utf-8') as f:
+            results = json.load(f)
+    return jsonify({
+        "templates": QUALITY_TESTS,
+        "results": results,
+    })
+
+
+@app.route('/api/dashboard', methods=['GET'])
+def api_dashboard():
+    import json, os
+    from materials_calc import QUALITY_TESTS
+
+    save_dir = os.path.join(os.path.dirname(__file__), 'logs')
+
+    # 获取检查清单进度
+    checklist_state = {}
+    cl_file = os.path.join(save_dir, 'checklist_state.json')
+    if os.path.exists(cl_file):
+        with open(cl_file, 'r', encoding='utf-8') as f:
+            checklist_state = json.load(f)
+
+    # 计算总进度
+    total_items = 0
+    checked_items = 0
+    phase_progress = {}
+    if isinstance(checklist_state, list):
+        for cat in checklist_state:
+            phase = cat.get('phase', 'unknown')
+            items = cat.get('items', [])
+            cat_total = len(items)
+            cat_checked = sum(1 for i in items if i.get('checked', False))
+            total_items += cat_total
+            checked_items += cat_checked
+            if phase not in phase_progress:
+                phase_progress[phase] = {"total": 0, "checked": 0}
+            phase_progress[phase]["total"] += cat_total
+            phase_progress[phase]["checked"] += cat_checked
+
+    overall_pct = round(checked_items / total_items * 100, 1) if total_items > 0 else 0
+
+    for phase in phase_progress:
+        p = phase_progress[phase]
+        p["percent"] = round(p["checked"] / p["total"] * 100, 1) if p["total"] > 0 else 0
+
+    return jsonify({
+        "overall_progress": overall_pct,
+        "total_items": total_items,
+        "checked_items": checked_items,
+        "phase_progress": phase_progress,
+    })
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)

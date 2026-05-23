@@ -1,0 +1,55 @@
+# ============================================
+# 永颐无机磨石 · 施工管理平台
+# Docker Compose - 生产部署配置
+# ============================================
+
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yongyi-terrazzo
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
+      - FLASK_ENV=production
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/params')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 定时备份（可选）
+  backup:
+    image: alpine:latest
+    container_name: yongyi-backup
+    restart: unless-stopped
+    volumes:
+      - ./data:/data:ro
+      - ./backups:/backups
+    entrypoint: |
+      sh -c "
+      while true; do
+        cp /data/yongyi.db /backups/yongyi_$(date +%Y%m%d).db
+        echo 'Backup completed: $(date)'
+        sleep 86400
+      done
+      "
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

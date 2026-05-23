@@ -1,0 +1,23 @@
+{
+  "name": "永颐无机磨石 · 施工管理平台",
+  "short_name": "永颐施工管理",
+  "description": "基层抗裂砂浆+无机金磨石面层施工管理工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a5276",
+  "theme_color": "#1a5276",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["business", "construction", "productivity"]
+}

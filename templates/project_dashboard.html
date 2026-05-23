@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project.name }} - 永颐施工管理</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .metric-card { background: white; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }
+        .metric-card .value { font-size: 1.6rem; font-weight: 700; color: #1a5276; }
+        .metric-card .label { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        .metric-card .trend { font-size: 0.75rem; margin-top: 2px; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #1a5276; margin: 20px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e9ecef; }
+        .progress-mini { height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+        .progress-mini .fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+        .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .status-active { background: #e8f5e9; color: #2e7d32; }
+        .status-completed { background: #e3f2fd; color: #1565c0; }
+        @media print { .no-print { display: none; } body { font-size: 11pt; } }
+    </style>
+</head>
+<body>
+<header class="app-header no-print">
+    <h1>📊 {{ project.name }}</h1>
+    <div class="subtitle" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span>📍 {{ project.location or '未指定地点' }} | 📐 {{ project.area }}m² | 🗓️ {{ project.start_date }}</span>
+        <span>
+            <span class="status-badge {% if project.status == '进行中' %}status-active{% else %}status-completed{% endif %}">{{ project.status }}</span>
+            <a href="/" style="color:white;margin-left:12px;font-size:0.85rem;">← 返回管理平台</a>
+        </span>
+    </div>
+</header>
+
+<main class="main-content">
+    <!-- 核心指标 -->
+    <div class="metric-grid">
+        <div class="metric-card"><div class="value">{{ "%.0f"|format(project.area) }}</div><div class="label">施工面积 (m²)</div></div>
+        <div class="metric-card"><div class="value">{{ stats.total_items }}</div><div class="label">检查项</div></div>
+        <div class="metric-card"><div class="value">{{ "%.1f"|format(dashboard.overall_progress) }}%</div><div class="label">完成进度</div></div>
+        <div class="metric-card"><div class="value">{{ stats.log_count }}</div><div class="label">施工日志</div></div>
+        <div class="metric-card"><div class="value">{{ stats.photo_count }}</div><div class="label">现场照片</div></div>
+        <div class="metric-card"><div class="value">{{ stats.quality_total }}</div><div class="label">质检项</div></div>
+    </div>
+
+    <!-- 项目信息 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="card">
+            <h2>🏗️ 项目概况</h2>
+            <table class="result-table">
+                <tr><td>项目名称</td><td><strong>{{ project.name }}</strong></td></tr>
+                <tr><td>施工地点</td><td>{{ project.location or '未指定' }}</td></tr>
+                <tr><td>施工面积</td><td>{{ "%.0f"|format(project.area) }} m²</td></tr>
+                <tr><td>基层厚度</td><td>{{ "%.0f"|format(project.base_thickness) }} mm</td></tr>
+                <tr><td>面层厚度</td><td>{{ "%.0f"|format(project.surface_thickness) }} mm</td></tr>
+                <tr><td>开工日期</td><td>{{ project.start_date }}</td></tr>
+                <tr><td>项目状态</td><td><span class="status-badge {% if project.status == '进行中' %}status-active{% else %}status-completed{% endif %}">{{ project.status }}</span></td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>✅ 各阶段进度</h2>
+            {% for phase, prog in phase_progress.items() %}
+            <div style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;font-size:0.85rem;">
+                    <span>{{ phase }}</span>
+                    <span style="font-weight:600;">{{ prog.checked }}/{{ prog.total }} ({{ prog.percent }}%)</span>
+                </div>
+                <div class="progress-mini">
+                    <div class="fill" style="width:{{ prog.percent }}%;background:{% if prog.percent == 100 %}#27ae60{% elif prog.percent > 50 %}#2980b9{% else %}#e67e22{% endif %};"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 材料用量 -->
+    <div class="card">
+        <h2>🧮 材料用量估算</h2>
+        <div style="overflow-x:auto;">
+            <table class="result-table">
+                <thead><tr><th>材料</th><th>用量 (kg)</th><th>占比</th></tr></thead>
+                <tbody>
+                {% for name, amount in materials.items() %}
+                {% if amount > 0 %}
+                <tr><td>{{ name }}</td><td>{{ "%.1f"|format(amount) }}</td><td>{{ "%.1f"|format(amount / materials_total * 100) }}%</td></tr>
+                {% endif %}
+                {% endfor %}
+                </tbody>
+                <tfoot><tr style="font-weight:700;background:#f8f9fa;"><td>合计</td><td>{{ "%.0f"|format(materials_total) }} kg</td><td>100%</td></tr></tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- 质量检测结果 -->
+    <div class="card">
+        <h2>🧪 质量检测结果</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;">
+            {% for qt in quality_tests %}
+            <div class="param-card" style="padding:10px;border-left:4px solid {{ '#27ae60' if qt.is_pass else '#e74c3c' }};">
+                <div style="font-weight:600;font-size:0.85rem;">{{ qt.test_name }}</div>
+                <div style="font-size:0.8rem;color:#888;">标准: {{ qt.standard_value }}</div>
+                <div style="font-size:0.85rem;">
+                    实测: <strong>{{ qt.actual_value or '未检测' }}</strong>
+                    <span style="float:right;">{{ '✅合格' if qt.is_pass else '⏳待检' }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 施工日志摘要 -->
+    <div class="card no-print">
+        <h2>📝 施工日志 (最近5条)</h2>
+        {% for log in recent_logs %}
+        <div class="param-card" style="margin-bottom:8px;padding:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:0.85rem;">
+                <strong>{{ log.log_date }}</strong>
+                <span style="color:#888;">🌤️ {{ log.weather }} {{ log.temperature }}℃ | 👷 {{ log.workers }}人</span>
+            </div>
+            {% if log.work_content %}<div style="font-size:0.85rem;color:#555;margin-top:4px;">{{ log.work_content }}</div>{% endif %}
+            {% if log.issues and log.issues != '无' %}<div style="font-size:0.8rem;color:#e67e22;margin-top:2px;">⚠️ {{ log.issues }}</div>{% endif %}
+        </div>
+        {% else %}
+        <p style="color:#999;text-align:center;padding:1rem;">暂无施工日志</p>
+        {% endfor %}
+    </div>
+
+    <div class="no-print" style="text-align:center;padding:16px;color:#999;font-size:0.8rem;">
+        永颐无机磨石 · 施工管理平台 | 报告生成时间: {{ generated_at }}
+    </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>永颐无机磨石 - API文档</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .api-card { background: white; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+        .api-header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s; }
+        .api-header:hover { background: #f8f9fa; }
+        .api-method { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; color: white; min-width: 50px; text-align: center; }
+        .method-GET { background: #27ae60; }
+        .method-POST { background: #2980b9; }
+        .method-PUT { background: #e67e22; }
+        .method-DELETE { background: #e74c3c; }
+        .api-path { font-family: monospace; font-size: 0.9rem; margin-left: 12px; color: #2c3e50; }
+        .api-body { padding: 0 16px 16px; display: none; border-top: 1px solid #f0f0f0; }
+        .api-body.open { display: block; }
+        .api-section { margin-top: 12px; }
+        .api-section h4 { font-size: 0.8rem; color: #888; margin-bottom: 4px; text-transform: uppercase; }
+        .api-section pre { background: #f5f5f5; padding: 8px 12px; border-radius: 4px; font-size: 0.8rem; overflow-x: auto; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 6px; }
+        .badge-auth { background: #fce4ec; color: #c62828; }
+        .badge-paginate { background: #e8f5e9; color: #2e7d32; }
+        .search-box { width: 100%; padding: 10px 16px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 0.95rem; margin-bottom: 20px; }
+        .search-box:focus { outline: none; border-color: #2980b9; }
+        .stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+        .stat-item { background: white; padding: 16px 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; flex: 1; min-width: 120px; }
+        .stat-item .num { font-size: 1.8rem; font-weight: 700; color: #1a5276; }
+        .stat-item .label { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        .curl-example { background: #1e1e1e; color: #d4d4d4; padding: 12px 16px; border-radius: 6px; font-family: monospace; font-size: 0.8rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+<header class="app-header">
+    <h1>📖 永颐无机磨石 · API 文档</h1>
+    <div class="subtitle">RESTful API 接口规范 | 版本 3.2.0 | {{ endpoints|length }} 个端点</div>
+</header>
+<main class="main-content">
+    <div class="stat-row">
+        <div class="stat-item"><div class="num">{{ endpoints|length }}</div><div class="label">API 端点</div></div>
+        <div class="stat-item"><div class="num">{{ stats.GET }}</div><div class="label">GET 请求</div></div>
+        <div class="stat-item"><div class="num">{{ stats.POST }}</div><div class="label">POST 请求</div></div>
+        <div class="stat-item"><div class="num">{{ stats.PUT }}</div><div class="label">PUT 请求</div></div>
+        <div class="stat-item"><div class="num">{{ stats.DELETE }}</div><div class="label">DELETE 请求</div></div>
+    </div>
+
+    <input type="text" class="search-box" id="searchBox" placeholder="🔍 搜索API路径或方法..." onkeyup="filterAPIs()">
+
+    <div id="apiList">
+    {% for ep in endpoints %}
+    <div class="api-card" data-path="{{ ep.path }}" data-methods="{{ ep.methods|join(',') }}">
+        <div class="api-header" onclick="toggleAPI(this)">
+            <div>
+                {% for m in ep.methods %}
+                <span class="api-method method-{{ m }}">{{ m }}</span>
+                {% endfor %}
+                <span class="api-path">{{ ep.path }}</span>
+            </div>
+            <span style="color:#999;font-size:0.8rem;">{{ ep.endpoint }}</span>
+        </div>
+        <div class="api-body">
+            <div class="api-section">
+                <h4>Endpoint</h4>
+                <code>{{ ep.path }}</code>
+            </div>
+            <div class="api-section">
+                <h4>Methods</h4>
+                <span>{{ ep.methods|join(', ') }}</span>
+            </div>
+            {% if ep.params %}
+            <div class="api-section">
+                <h4>Parameters</h4>
+                <pre>{{ ep.params }}</pre>
+            </div>
+            {% endif %}
+            {% if ep.example %}
+            <div class="api-section">
+                <h4>Example (curl)</h4>
+                <div class="curl-example">{{ ep.example }}</div>
+            </div>
+            {% endif %}
+            <div class="api-section">
+                <h4>Response</h4>
+                <pre>{{ ep.response }}</pre>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    </div>
+</main>
+<script>
+function toggleAPI(header) {
+    header.nextElementSibling.classList.toggle('open');
+}
+function filterAPIs() {
+    const q = document.getElementById('searchBox').value.toLowerCase();
+    document.querySelectorAll('.api-card').forEach(card => {
+        const text = card.dataset.path + ' ' + card.dataset.methods;
+        card.style.display = text.includes(q) ? '' : 'none';
+    });
+}
+</script>
+</body>
+</html>

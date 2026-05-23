@@ -1,0 +1,1634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a5276">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="永颐施工管理">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/png" href="/static/icon-192.png">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <title>永颐无机磨石 - 施工管理工具</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { font-size: 12pt; }
+            .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+        }
+        .print-only { display: none; }
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px;
+                 border-radius: 8px; color: white; font-weight: 500; z-index: 9999;
+                 animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .toast-success { background: #27ae60; }
+        .toast-info { background: #2980b9; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; }
+                             to { transform: translateX(0); opacity: 1; } }
+        .badge-new { background: #e74c3c; color: white; font-size: 0.65rem;
+                     padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/static/sw.js').then(function(reg) {
+                console.log('SW registered:', reg.scope);
+            }).catch(function(err) {
+                console.log('SW failed:', err);
+            });
+        });
+    }
+    </script>
+</head>
+<body>
+
+<!-- Header -->
+<header class="app-header no-print">
+    <h1>🏗️ 永颐无机磨石 · 施工管理平台</h1>
+    <div class="subtitle" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <span>基层抗裂砂浆 + 无机金磨石面层 | 总工期约22天 | 抗压≥60MPa | 亮度≥70GU</span>
+    <span style="display:flex;align-items:center;gap:8px;font-size:0.85rem;">
+        <span>📋 项目:</span>
+        <select id="projectSelector" onchange="switchProject()" 
+                style="padding:4px 8px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;
+                       background:rgba(255,255,255,0.15);color:white;font-size:0.85rem;
+                       cursor:pointer;min-width:160px;">
+            <option value="">加载中...</option>
+        </select>
+        <button class="theme-toggle" onclick="toggleTheme()" title="切换深色/浅色模式">🌓</button>
+            <button onclick="showNewProjectDialog()" style="padding:4px 10px;border:1px solid rgba(255,255,255,0.3);
+                border-radius:4px;background:rgba(255,255,255,0.15);color:white;cursor:pointer;font-size:0.8rem;">
+            ➕ 新建
+        </button>
+    </span>
+</div>
+</header>
+
+<!-- Navigation -->
+<nav class="nav-tabs no-print" id="navTabs">
+    <button class="nav-tab active" data-tab="calculator">📐 材料计算</button>
+    <button class="nav-tab" data-tab="purchase">📦 采购清单 <span class="badge-new">NEW</span></button>
+    <button class="nav-tab" data-tab="schedule">📅 进度计划</button>
+    <button class="nav-tab" data-tab="checklist">✅ 检查清单</button>
+    <button class="nav-tab" data-tab="dailylog">📝 施工日志 <span class="badge-new">NEW</span></button>
+    <button class="nav-tab" data-tab="photos">📸 照片墙 <span class="badge-new">NEW</span></button>
+    <button class="nav-tab" data-tab="inventory">📦 库存管理 <span class="badge-new">NEW</span></button>
+    <button class="nav-tab" data-tab="dashboard">📊 进度看板 <span class="badge-new">NEW</span></button>
+    <button class="nav-tab" data-tab="params">📋 技术参数</button>
+</nav>
+<main class="main-content">
+
+<!-- ============================================================ -->
+<!-- 面板1: 材料计算 -->
+<!-- ============================================================ -->
+<div class="tab-panel active" id="panel-calculator">
+    <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="stat-number" id="statArea">0</div><div class="stat-label">施工面积 (m²)</div></div>
+        <div class="stat-card"><div class="stat-number" id="statWeight">0</div><div class="stat-label">总材料重量 (kg)</div></div>
+        <div class="stat-card"><div class="stat-number" id="statBase">50</div><div class="stat-label">基层厚度 (mm)</div></div>
+        <div class="stat-card"><div class="stat-number" id="statSurface">15</div><div class="stat-label">面层厚度 (mm)</div></div>
+    </div>
+
+    <div class="card">
+        <h2>📐 材料用量计算器</h2>
+        <div class="calc-form">
+            <div class="form-group">
+                <label>施工面积 (m²)</label>
+                <input type="number" id="inputArea" value="100" min="1" step="1">
+            </div>
+            <div class="form-group">
+                <label>基层厚度 (mm) <small style="color:#999;">30~80mm</small></label>
+                <input type="number" id="inputBaseThickness" value="50" min="30" max="80" step="5">
+            </div>
+            <div class="form-group">
+                <label>面层厚度 (mm) <small style="color:#999;">10~25mm</small></label>
+                <input type="number" id="inputSurfaceThickness" value="15" min="10" max="25" step="1">
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end; gap:8px;">
+                <button class="btn btn-primary" onclick="calculate()">🧮 计算</button>
+                <button class="btn btn-success" onclick="switchTab('purchase')">📦 生成采购清单</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" id="resultCard" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>📊 材料清单</h2>
+            <button class="btn btn-success no-print" onclick="window.print()" style="padding:0.4rem 1rem;font-size:0.8rem;">
+                🖨️ 打印/导出PDF
+            </button>
+        </div>
+        <div style="overflow-x:auto;">
+            <table class="result-table" id="resultTable">
+                <thead><tr><th>材料名称</th><th>用量 (kg)</th><th>所属层</th></tr></thead>
+                <tbody id="resultBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<!-- ============================================================ -->
+<!-- 面板2: 采购清单 -->
+<!-- ============================================================ -->
+<div class="tab-panel" id="panel-purchase">
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <h2>📦 材料采购清单</h2>
+            <div>
+                <button class="btn btn-primary" onclick="loadPurchase()" style="padding:0.4rem 1rem;font-size:0.85rem;">🔄 刷新清单</button>
+                <button class="btn btn-success" onclick="window.print()" style="padding:0.4rem 1rem;font-size:0.85rem;">🖨️ 打印</button>
+            </div>
+        </div>
+        <p style="color:#666;font-size:0.85rem;margin:0.5rem 0;">基于当前材料计算结果，按实际包装规格换算采购数量（含合理余量）</p>
+        <div style="overflow-x:auto;">
+            <table class="result-table" id="purchaseTable">
+                <thead>
+                    <tr><th>材料名称</th><th>需用量 (kg)</th><th>包装规格</th><th>采购数量</th><th>实际到货 (kg)</th><th>余量 (kg)</th><th>备注</th></tr>
+                </thead>
+                <tbody id="purchaseBody"></tbody>
+                <tfoot id="purchaseFoot"></tfoot>
+            </table>
+        </div>
+    </div>
+    <div class="card no-print">
+        <h2>📐 包装规格参考</h2>
+        <div id="packagingSpecs" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px;"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 面板3: 进度计划 -->
+<!-- ============================================================ -->
+<div class="tab-panel" id="panel-schedule">
+    <div class="card no-print">
+        <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin:0;">
+                <label>开工日期</label>
+                <input type="date" id="inputStartDate">
+            </div>
+            <button class="btn btn-primary" onclick="loadSchedule()">🔄 生成计划</button>
+            <button class="btn btn-success" onclick="window.print()" style="padding:0.4rem 1rem;font-size:0.85rem;">🖨️ 打印</button>
+        </div>
+    </div>
+    <div class="card">
+        <h2>📊 施工进度时间表</h2>
+        <div style="overflow-x:auto;">
+            <table class="schedule-table" id="scheduleTable">
+                <thead><tr><th>施工阶段</th><th>天数</th><th>开始</th><th>结束</th><th>标签</th></tr></thead>
+                <tbody id="scheduleBody"></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card">
+        <h2>⏱️ 关键节点控制</h2>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px;">
+            <div class="param-card"><h4>⏰ 时间控制</h4>
+                <div class="param-item"><span>基层养护</span><span style="font-weight:600;">7天 ≥25MPa</span></div>
+                <div class="param-item"><span>面层养护</span><span style="font-weight:600;">7天 ≥25MPa</span></div>
+                <div class="param-item"><span>精磨间隔</span><span style="font-weight:600;">28天后</span></div>
+                <div class="param-item"><span>层间间隔</span><span style="font-weight:600;">≤1h</span></div>
+            </div>
+            <div class="param-card"><h4>🌡️ 环境控制</h4>
+                <div class="param-item"><span>施工温度</span><span style="font-weight:600;">5~30℃</span></div>
+                <div class="param-item"><span>环境湿度</span><span style="font-weight:600;">40~70%</span></div>
+                <div class="param-item"><span>面层湿度</span><span style="font-weight:600;">≤70%</span></div>
+            </div>
+            <div class="param-card"><h4>🔍 质量停检点</h4>
+                <div class="param-item"><span>① 基层处理</span><span style="font-weight:600;">含水率≤8%</span></div>
+                <div class="param-item"><span>② 基层养护</span><span style="font-weight:600;">7D≥25MPa</span></div>
+                <div class="param-item"><span>③ 面层养护</span><span style="font-weight:600;">3D≥25MPa</span></div>
+                <div class="param-item"><span>④ 最终验收</span><span style="font-weight:600;">28D≥50MPa</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- ============================================================ -->
+<!-- 面板4: 检查清单 -->
+<!-- ============================================================ -->
+<div class="tab-panel" id="panel-checklist">
+    <div class="card no-print">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <h2>✅ 全流程检查清单</h2>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span style="font-size:0.85rem;color:#666;">完成进度：</span>
+                <span id="checklistProgress" style="font-weight:700;font-size:1.1rem;color:var(--success);">0%</span>
+                <button class="btn btn-success" onclick="saveChecklistToServer()" style="padding:0.4rem 0.8rem;font-size:0.8rem;">💾 保存</button>
+                <button class="btn" onclick="resetChecklist()" style="padding:0.4rem 0.8rem;font-size:0.8rem;background:#eee;">🔄 重置</button>
+            </div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%;"></div></div>
+    </div>
+    <div id="checklistContainer"></div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 面板5: 施工日志 -->
+<!-- ============================================================ -->
+<div class="tab-panel" id="panel-dailylog">
+    <div class="card no-print">
+        <h2>📝 施工日志</h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group"><label>项目名称</label><input type="text" id="logProject" value="永颐无机磨石项目"></div>
+            <div class="form-group"><label>日期</label><input type="date" id="logDate"></div>
+            <div class="form-group"><label>天气</label>
+                <select id="logWeather" style="width:100%;padding:0.6rem;border:1px solid #ddd;border-radius:6px;">
+                    <option>晴</option><option>多云</option><option>阴</option><option>小雨</option><option>大雨</option>
+                </select>
+            </div>
+            <div class="form-group"><label>温度 (℃)</label><input type="text" id="logTemp" value="20~25"></div>
+            <div class="form-group"><label>施工人数</label><input type="number" id="logWorkers" value="5" min="1"></div>
+            <div class="form-group"><label>施工面积 (m²)</label><input type="number" id="logArea" value="100" min="1"></div>
+        </div>
+        <div class="form-group"><label>今日工作内容</label>
+            <textarea id="logContent" rows="3" style="width:100%;padding:0.6rem;border:1px solid #ddd;border-radius:6px;resize:vertical;"></textarea>
+        </div>
+        <div class="form-group"><label>材料使用情况</label>
+            <textarea id="logMaterials" rows="2" style="width:100%;padding:0.6rem;border:1px solid #ddd;border-radius:6px;resize:vertical;"></textarea>
+        </div>
+        <div class="form-group"><label>存在问题及处理</label>
+            <textarea id="logIssues" rows="2" style="width:100%;padding:0.6rem;border:1px solid #ddd;border-radius:6px;resize:vertical;" placeholder="无"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveDailyLog()">💾 保存日志</button>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>📚 历史日志</h2>
+            <button class="btn btn-primary no-print" onclick="loadDailyLogs()" style="padding:0.4rem 1rem;font-size:0.85rem;">🔄 刷新</button>
+        </div>
+        <div id="logListContainer"></div>
+    </div>
+</div>
+<!-- ============================================================ -->
+<!-- 面板6: 施工照片墙 -->
+<!-- ============================================================ -->
+<div class="tab-panel" id="panel-photos">
+    <div class="card no-print">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <h2>📸 施工照片墙</h2>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select id="photoPhaseFilter" onchange="loadPhotos()" 
+                        style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.85rem;">
+                    <option value="">全部阶段</option>
+                    <option value="基层处理">基层处理</option>
+                    <option value="抗裂砂浆施工">抗裂砂浆施工</option>
+                    <option value="面层施工">面层施工</option>
+                    <option value="打磨抛光">打磨抛光</option>
+                    <option value="密封固化">密封固化</option>
+                    <option value="最终验收">最终验收</option>
+                </select>
+                <button class="btn btn-primary" onclick="showPhotoUploadDialog()" style="padding:0.4rem 1rem;font-size:0.85rem;">📷 上传照片</button>
+            </div>
+        </div>
+    </div>
+    <div id="photoGallery" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;"></div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 面板6: 库存管理 -->
+<!-- ============================================================ -->
+<div class="tab-panel" id="panel-inventory">
+    <div class="card no-print">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <h2>📦 材料库存管理</h2>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary" onclick="showAddMaterialDialog()" style="padding:0.4rem 1rem;font-size:0.85rem;">📥 材料入库</button>
+                <button class="btn btn-success" onclick="loadInventory()" style="padding:0.4rem 1rem;font-size:0.85rem;">🔄 刷新</button>
+            </div>
+        </div>
+        <p style="font-size:0.85rem;color:#666;margin-top:0.5rem;">记录材料入库情况，跟踪库存消耗</p>
+    </div>
+
+    <div class="card">
+        <h2>📊 库存汇总</h2>
+        <div style="overflow-x:auto;">
+            <table class="result-table" id="inventoryTable">
+                <thead><tr><th>材料名称</th><th>总量 (kg)</th><th>包装数</th><th>总成本 (元)</th><th>记录数</th></tr></thead>
+                <tbody id="inventoryBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📋 出入库记录</h2>
+        <div style="overflow-x:auto;">
+            <table class="result-table" id="invRecordsTable">
+                <thead><tr><th>日期</th><th>材料名称</th><th>数量 (kg)</th><th>包装数</th><th>单价</th><th>总价</th></tr></thead>
+                <tbody id="invRecordsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card no-print">
+        <h2>📤 数据导出</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="exportProjectJSON()">📥 导出JSON报告</button>
+            <button class="btn btn-success" onclick="backupDatabase()">💾 备份数据库</button>
+            <button class="btn" onclick="window.print()" style="background:#eee;">🖨️ 打印当前页</button>
+            <button class="btn" onclick="showImportDialog()" style="background:#e8f5e9;color:#2e7d32;">📥 导入项目</button>
+        </div>
+        <div id="exportResult" style="margin-top:0.8rem;font-size:0.85rem;color:#666;"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 面板6: 进度看板 -->
+<!-- ============================================================ -->
+<div class="tab-panel" id="panel-dashboard">
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-number" id="dashOverallPct">0%</div><div class="stat-label">总体施工进度</div></div>
+        <div class="stat-card"><div class="stat-number" id="dashCheckedItems">0</div><div class="stat-label">已完成检查项</div></div>
+        <div class="stat-card"><div class="stat-number" id="dashTotalItems">0</div><div class="stat-label">总检查项</div></div>
+        <div class="stat-card"><div class="stat-number" id="dashCostPerM2">0</div><div class="stat-label">单方造价 (¥/m²)</div></div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+        <div class="card">
+            <h2>📈 各阶段完成进度</h2>
+            <canvas id="progressChart" height="200"></canvas>
+            <div id="phaseProgressList" style="margin-top:1rem;"></div>
+        </div>
+        <div class="card">
+            <h2>💰 成本构成</h2>
+            <canvas id="costChart" height="200"></canvas>
+            <div id="costSummary" style="margin-top:1rem;font-size:0.9rem;"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🧪 质量检测记录</h2>
+        <p style="font-size:0.85rem;color:#666;margin-bottom:0.8rem;">记录各项检测的实际结果，与标准值对比</p>
+        <div id="qualityTestList" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:8px;"></div>
+        <button class="btn btn-primary" onclick="saveQualityTests()" style="margin-top:1rem;">💾 保存检测记录</button>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 面板6: 技术参数 -->
+<!-- ============================================================ -->
+<div class="tab-panel" id="panel-params">
+    <div class="card">
+        <h2>📋 施工技术参数速查</h2>
+        <div class="param-grid" id="paramGrid"></div>
+    </div>
+    <div class="card">
+        <h2>🧪 性能指标与验收标准</h2>
+        <div style="overflow-x:auto;">
+            <table class="result-table">
+                <thead><tr><th>指标</th><th>要求</th><th>检测标准</th></tr></thead>
+                <tbody>
+                    <tr><td>抗压强度</td><td>≥60 MPa</td><td>GB/T 50081</td></tr>
+                    <tr><td>抗折强度</td><td>≥8 MPa</td><td>GB/T 50081</td></tr>
+                    <tr><td>耐磨性</td><td>≤0.05 g/cm²</td><td>GB/T 12988</td></tr>
+                    <tr><td>防滑等级</td><td>R10</td><td>DIN 51130</td></tr>
+                    <tr><td>光泽度（罩面）</td><td>≥70 GU</td><td>GB/T 13891</td></tr>
+                    <tr><td>光泽度（未罩面）</td><td>≥40 GU</td><td>GB/T 13891</td></tr>
+                    <tr><td>28D抗压强度</td><td>≥50 MPa</td><td>取芯检测</td></tr>
+                    <tr><td>表面粗糙度</td><td>Ra≤0.2μm</td><td>粗糙度仪</td></tr>
+                    <tr><td>抗污性</td><td>咖啡/酱油24h不渗透</td><td>GB/T 3810.14</td></tr>
+                    <tr><td>基层含水率</td><td>≤8%（基层）/ ≤6%（面层）</td><td>塑料膜覆盖法</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card">
+        <h2>📊 施工时间轴</h2>
+        <div id="timelineContainer"><p style="color:#999;text-align:center;padding:1rem;">加载中...</p></div>
+    </div>
+
+    <div class="card no-print">
+        <h2>🔗 国检报告</h2>
+        <p>报告编号: <strong>WT2024B01C01852</strong> | 中国国检测试控股集团</p>
+        <p style="font-size:0.85rem;color:#666;">检测日期: 2024.06.13-07.18 | 型号: YYA331 | 签发: 2024.07.29</p>
+        <p><a href="http://wx.ctc-online.cn/gjcss/wechat/report-qr?reportNo=7Alwn2TX7Ud2xpJjG7EyXQ%3D%3D" target="_blank" style="color:var(--primary-light);">🔍 验证报告二维码 →</a></p>
+    </div>
+</div>
+
+</main>
+<script>
+// ============================================================
+// Tab切换
+// ============================================================
+function switchTab(tabName) {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.nav-tab[data-tab="${tabName}"]`).classList.add('active');
+    document.getElementById('panel-' + tabName).classList.add('active');
+}
+
+document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        switchTab(this.dataset.tab);
+    });
+});
+
+// ============================================================
+// Toast通知
+// ============================================================
+function showToast(msg, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 2500);
+}
+
+// ============================================================
+// 材料计算
+// ============================================================
+function calculate() {
+    const area = parseFloat(document.getElementById('inputArea').value) || 100;
+    const thicknessBase = parseFloat(document.getElementById('inputBaseThickness').value) || 50;
+    const thicknessSurface = parseFloat(document.getElementById('inputSurfaceThickness').value) || 15;
+
+    fetch('/api/calc', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({area, thickness_base: thicknessBase, thickness_surface: thicknessSurface})
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('statArea').textContent = area;
+        document.getElementById('statWeight').textContent = data.total_weight_kg.toLocaleString();
+        document.getElementById('statBase').textContent = thicknessBase;
+        document.getElementById('statSurface').textContent = thicknessSurface;
+
+        const tbody = document.getElementById('resultBody');
+        tbody.innerHTML = '';
+        for (const [layerKey, layerData] of Object.entries(data.layers)) {
+            const headerRow = tbody.insertRow();
+            headerRow.className = 'layer-header';
+            headerRow.innerHTML = `<td colspan="3">📦 ${layerData.name}</td>`;
+            if (layerData.materials) {
+                for (const [matName, amount] of Object.entries(layerData.materials)) {
+                    if (amount > 0) {
+                        const row = tbody.insertRow();
+                        row.innerHTML = `<td>${matName}</td><td>${amount.toFixed(1)}</td><td>${layerData.name}</td>`;
+                    }
+                }
+            }
+        }
+        document.getElementById('resultCard').style.display = 'block';
+        // 保存面积供采购清单使用
+        window._lastCalcArea = area;
+        window._lastCalcData = data;
+        showToast(`✅ ${area}m² 材料计算完成`);
+    });
+}
+// ============================================================
+// 采购清单
+// ============================================================
+function loadPurchase() {
+    const area = parseFloat(document.getElementById('inputArea').value) || 100;
+    const thicknessBase = parseFloat(document.getElementById('inputBaseThickness').value) || 50;
+    const thicknessSurface = parseFloat(document.getElementById('inputSurfaceThickness').value) || 15;
+
+    fetch('/api/purchase', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({area, thickness_base: thicknessBase, thickness_surface: thicknessSurface})
+    })
+    .then(r => r.json())
+    .then(data => {
+        const tbody = document.getElementById('purchaseBody');
+        tbody.innerHTML = '';
+        let totalItems = 0, totalCost = 0;
+
+        data.purchase_list.forEach(item => {
+            if (item.packages <= 0) return;
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                <td><strong>${item.name}</strong></td>
+                <td>${item.total_kg.toFixed(1)}</td>
+                <td>${item.note || item.per_package + 'kg/' + item.unit}</td>
+                <td style="text-align:center;font-weight:700;color:var(--primary);">${item.packages} ${item.unit}</td>
+                <td>${item.actual_kg.toFixed(1)}</td>
+                <td style="color:${item.waste_kg > 10 ? '#e67e22' : '#27ae60'};">${item.waste_kg.toFixed(1)}</td>
+                <td style="font-size:0.8rem;color:#999;">${item.note || '-'}</td>
+            `;
+            totalItems += item.packages;
+        });
+
+        const foot = document.getElementById('purchaseFoot');
+        foot.innerHTML = `<tr style="background:#f0f7ff;font-weight:600;">
+            <td colspan="3">合计采购项数: ${data.purchase_list.filter(i=>i.packages>0).length}</td>
+            <td style="text-align:center;">${totalItems} 件</td>
+            <td colspan="3">基于 ${data.area}m² 施工面积计算</td>
+        </tr>`;
+
+        // 包装规格
+        const specsDiv = document.getElementById('packagingSpecs');
+        specsDiv.innerHTML = '';
+        for (const [name, spec] of Object.entries(data.packaging_specs)) {
+            specsDiv.innerHTML += `<div class="param-card" style="padding:8px 12px;">
+                <div style="font-weight:600;font-size:0.85rem;">${name}</div>
+                <div style="font-size:0.8rem;color:#888;">${spec.note}</div>
+            </div>`;
+        }
+        showToast(`📦 采购清单已生成，共 ${totalItems} 件`);
+    });
+}
+
+// ============================================================
+// 进度计划
+// ============================================================
+function loadSchedule() {
+    const startDate = document.getElementById('inputStartDate').value || new Date().toISOString().split('T')[0];
+    fetch(`/api/schedule?start=${startDate}`)
+    .then(r => r.json())
+    .then(data => {
+        const tbody = document.getElementById('scheduleBody');
+        tbody.innerHTML = '';
+        const phaseMap = {
+            '基层处理': 'prep', '抗裂砂浆施工': 'base', '基层养护': 'base',
+            '面层界面处理': 'surface', '面层浇筑': 'surface', '面层养护': 'surface',
+            '粗磨(60目)': 'grind', '中磨(150→500目)': 'grind', '精磨(1000→3000目)': 'grind',
+            '密封固化': 'seal'
+        };
+        data.forEach((phase, i) => {
+            const row = tbody.insertRow();
+            const badgeClass = phaseMap[phase.phase] || 'prep';
+            row.innerHTML = `<td><strong>${phase.phase}</strong></td>
+                <td>${phase.days}天</td><td>${phase.start}</td><td>${phase.end}</td>
+                <td><span class="phase-badge phase-${badgeClass}">${phase.days}天</span></td>`;
+        });
+        showToast(`📅 ${data.length} 个阶段已排布`);
+    });
+}
+// ============================================================
+// 检查清单 (含localStorage持久化)
+// ============================================================
+let checklistData = [];
+const CHECKLIST_STORAGE_KEY = 'yongyi_checklist';
+
+function loadChecklist() {
+    // 先尝试从localStorage恢复
+    const saved = localStorage.getItem(CHECKLIST_STORAGE_KEY);
+    if (saved) {
+        try {
+            checklistData = JSON.parse(saved);
+            renderChecklist();
+            return;
+        } catch(e) {}
+    }
+    // 否则从服务端加载
+    fetch('/api/checklist')
+    .then(r => r.json())
+    .then(data => {
+        // 再尝试从服务端加载已保存的状态
+        fetch('/api/checklist-load')
+        .then(r => r.json())
+        .then(state => {
+            if (state && state.length === data.length) {
+                // 合并状态
+                state.forEach((cat, ci) => {
+                    if (cat.items) {
+                        cat.items.forEach((item, ii) => {
+                            if (data[ci] && data[ci].items[ii]) {
+                                data[ci].items[ii].checked = item.checked || false;
+                            }
+                        });
+                    }
+                });
+            }
+            checklistData = data;
+            saveChecklistToLocal();
+            renderChecklist();
+        })
+        .catch(() => {
+            checklistData = data;
+            renderChecklist();
+        });
+    });
+}
+
+function renderChecklist() {
+    const container = document.getElementById('checklistContainer');
+    container.innerHTML = '';
+    let totalItems = 0, checkedItems = 0;
+
+    checklistData.forEach((category, catIdx) => {
+        const section = document.createElement('div');
+        section.className = 'checklist-category';
+        const catChecked = category.items.filter(i => i.checked).length;
+        const catTotal = category.items.length;
+        totalItems += catTotal; checkedItems += catChecked;
+
+        section.innerHTML = `
+            <h3>${category.category}
+                <span class="progress-badge">${catChecked}/${catTotal}</span>
+            </h3>
+            ${category.items.map((item, itemIdx) => `
+                <div class="checklist-item ${item.checked ? 'checked' : ''}">
+                    <input type="checkbox" id="chk-${catIdx}-${itemIdx}"
+                           ${item.checked ? 'checked' : ''}
+                           onchange="toggleCheck(${catIdx}, ${itemIdx})">
+                    <label for="chk-${catIdx}-${itemIdx}">${item.text}</label>
+                </div>
+            `).join('')}
+        `;
+        container.appendChild(section);
+    });
+    updateProgress(checkedItems, totalItems);
+}
+
+function toggleCheck(catIdx, itemIdx) {
+    checklistData[catIdx].items[itemIdx].checked =
+        !checklistData[catIdx].items[itemIdx].checked;
+    saveChecklistToLocal();
+    renderChecklist();
+}
+
+function updateProgress(checked, total) {
+    const pct = total > 0 ? Math.round(checked / total * 100) : 0;
+    document.getElementById('checklistProgress').textContent = pct + '%';
+    document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function saveChecklistToLocal() {
+    localStorage.setItem(CHECKLIST_STORAGE_KEY, JSON.stringify(checklistData));
+}
+
+function saveChecklistToServer() {
+    fetch('/api/checklist-save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(checklistData)
+    })
+    .then(r => r.json())
+    .then(() => showToast('💾 检查清单已保存到服务器'))
+    .catch(() => showToast('⚠️ 保存失败', 'info'));
+    saveChecklistToLocal();
+    showToast('💾 已保存到本地');
+}
+
+function resetChecklist() {
+    if (!confirm('确定要重置所有检查项吗？')) return;
+    checklistData.forEach(cat => cat.items.forEach(item => item.checked = false));
+    saveChecklistToLocal();
+    renderChecklist();
+    showToast('🔄 检查清单已重置');
+}
+// ============================================================
+// 施工日志
+// ============================================================
+function saveDailyLog() {
+    const data = {
+        project: document.getElementById('logProject').value,
+        date: document.getElementById('logDate').value,
+        weather: document.getElementById('logWeather').value,
+        temperature: document.getElementById('logTemp').value,
+        workers: parseInt(document.getElementById('logWorkers').value) || 5,
+        area: parseFloat(document.getElementById('logArea').value) || 100,
+        work_content: document.getElementById('logContent').value,
+        materials_used: document.getElementById('logMaterials').value,
+        issues: document.getElementById('logIssues').value || '无',
+    };
+
+    fetch('/api/daily-log', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.status === 'ok') {
+            showToast('📝 施工日志已保存');
+            document.getElementById('logContent').value = '';
+            document.getElementById('logMaterials').value = '';
+            document.getElementById('logIssues').value = '无';
+            loadDailyLogs();
+        }
+    })
+    .catch(() => showToast('⚠️ 保存失败', 'info'));
+}
+
+function loadDailyLogs() {
+    fetch('/api/daily-logs')
+    .then(r => r.json())
+    .then(logs => {
+        const container = document.getElementById('logListContainer');
+        if (!logs || logs.length === 0) {
+            container.innerHTML = '<p style="color:#999;text-align:center;padding:2rem;">暂无施工日志记录</p>';
+            return;
+        }
+        let html = '';
+        logs.reverse().forEach((log, i) => {
+            html += `
+            <div class="param-card" style="margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <h4 style="margin:0;font-size:0.9rem;">📅 ${log.date} | ${log.project}</h4>
+                    <span style="font-size:0.75rem;color:#999;">🌤️ ${log.weather} ${log.temperature}℃</span>
+                </div>
+                <div style="font-size:0.85rem;color:#555;margin-top:6px;">
+                    <div>👷 施工人数: ${log.workers}人 | 面积: ${log.area}m²</div>
+                    ${log.work_content ? `<div><strong>工作内容:</strong> ${log.work_content}</div>` : ''}
+                    ${log.materials_used ? `<div><strong>材料使用:</strong> ${log.materials_used}</div>` : ''}
+                    ${log.issues && log.issues !== '无' ? `<div style="color:#e67e22;"><strong>⚠️ 问题:</strong> ${log.issues}</div>` : ''}
+                </div>
+            </div>`;
+        });
+        container.innerHTML = html;
+    });
+}
+
+// ============================================================
+// 技术参数
+// ============================================================
+function loadParams() {
+    fetch('/api/params')
+    .then(r => r.json())
+    .then(data => {
+        const grid = document.getElementById('paramGrid');
+        grid.innerHTML = '';
+        addParamCard(grid, '🌡️ 环境要求', data.environment);
+        addParamCard(grid, '🏗️ 基层参数', data.base_layer);
+        addParamCard(grid, '✨ 面层参数', data.surface_layer);
+        addParamCard(grid, '🏆 验收标准', data.final_acceptance);
+    });
+}
+
+function addParamCard(container, title, items) {
+    const labelMap = {
+        'temperature': '施工温度', 'humidity': '环境湿度',
+        'base_moisture': '基层含水率', 'thickness': '厚度',
+        'density': '密度', 'curing_days': '养护天数',
+        'strength_7d': '7D抗压', 'strength_3d': '3D抗压',
+        'strength_28d': '28D抗压', 'gloss_uncoated': '光泽度(未罩面)',
+        'gloss_coated': '光泽度(罩面)', 'wear_resistance': '耐磨性',
+        'anti_slip': '防滑等级'
+    };
+    const card = document.createElement('div');
+    card.className = 'param-card';
+    let html = `<h4>${title}</h4>`;
+    for (const [key, value] of Object.entries(items)) {
+        html += `<div class="param-item">
+            <span class="param-label">${labelMap[key] || key}</span>
+            <span class="param-value">${value}</span>
+        </div>`;
+    }
+    card.innerHTML = html;
+    container.appendChild(card);
+}
+
+
+// ============================================================
+// 进度看板 - Chart.js图表
+// ============================================================
+let progressChartInstance = null;
+let costChartInstance = null;
+
+function loadDashboard() {
+    // 加载进度数据
+    fetch(`/api/dashboard?project_id=${currentProjectId}`)
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('dashOverallPct').textContent = data.overall_progress + '%';
+        document.getElementById('dashCheckedItems').textContent = data.checked_items;
+        document.getElementById('dashTotalItems').textContent = data.total_items;
+
+        // 阶段进度列表
+        const phaseLabels = [];
+        const phaseValues = [];
+        const phaseColors = [];
+        const colorMap = {
+            '准备': '#3498db', '基层': '#e67e22', '面层': '#9b59b6',
+            '打磨': '#27ae60', '固化': '#f1c40f', '验收': '#e74c3c'
+        };
+        const phaseListDiv = document.getElementById('phaseProgressList');
+        phaseListDiv.innerHTML = '';
+        for (const [phase, prog] of Object.entries(data.phase_progress)) {
+            phaseLabels.push(phase);
+            phaseValues.push(prog.percent);
+            phaseColors.push(colorMap[phase] || '#95a5a6');
+            phaseListDiv.innerHTML += \`
+                <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.85rem;">
+                    <span>\${phase}</span>
+                    <span style="font-weight:600;color:\${colorMap[phase] || '#333'};">\${prog.percent}% (\${prog.checked}/\${prog.total})</span>
+                </div>
+                <div class="progress-bar" style="height:4px;margin:2px 0;">
+                    <div class="progress-fill" style="width:\${prog.percent}%;background:\${colorMap[phase] || '#3498db'};"></div>
+                </div>\`;
+        }
+
+        // 进度柱状图
+        const ctx1 = document.getElementById('progressChart').getContext('2d');
+        if (progressChartInstance) progressChartInstance.destroy();
+        progressChartInstance = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: phaseLabels,
+                datasets: [{
+                    label: '完成进度 (%)',
+                    data: phaseValues,
+                    backgroundColor: phaseColors,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    });
+
+    // 加载成本数据
+    const area = parseFloat(document.getElementById('inputArea').value) || 100;
+    fetch('/api/cost', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({area})
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('dashCostPerM2').textContent = '¥' + data.cost_per_m2;
+
+        const costSummary = document.getElementById('costSummary');
+        costSummary.innerHTML = \`
+            <div style="display:flex;justify-content:space-between;"><span>材料费</span><span style="font-weight:600;">¥\${data.material_cost.toLocaleString()}</span></div>
+            <div style="display:flex;justify-content:space-between;"><span>人工费</span><span style="font-weight:600;">¥\${data.labor_cost.toLocaleString()}</span></div>
+            <div style="display:flex;justify-content:space-between;border-top:2px solid #eee;padding-top:4px;margin-top:4px;">
+                <span style="font-weight:700;">总成本</span><span style="font-weight:700;color:var(--primary);">¥\${data.total_cost.toLocaleString()}</span>
+            </div>
+        \`;
+
+        // 成本饼图
+        const ctx2 = document.getElementById('costChart').getContext('2d');
+        if (costChartInstance) costChartInstance.destroy();
+        costChartInstance = new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: ['材料费', '人工费'],
+                datasets: [{
+                    data: [data.material_cost, data.labor_cost],
+                    backgroundColor: ['#2980b9', '#e67e22'],
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    });
+}
+
+// ============================================================
+// 质量检测记录
+// ============================================================
+let qualityTestData = [];
+let qualityTestResults = {};
+
+// ============================================================
+// 多项目管理
+// ============================================================
+let currentProjectId = 1;
+
+function loadProjects() {
+    fetch('/api/projects')
+    .then(r => r.json())
+    .then(projects => {
+        const sel = document.getElementById('projectSelector');
+        sel.innerHTML = '';
+        projects.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `#${p.id} ${p.name}`;
+            sel.appendChild(opt);
+        });
+        if (projects.length > 0) {
+            sel.value = currentProjectId;
+            if (!sel.value) { sel.value = projects[0].id; currentProjectId = projects[0].id; }
+        }
+    });
+}
+
+function switchProject() {
+    const sel = document.getElementById('projectSelector');
+    currentProjectId = parseInt(sel.value) || 1;
+    // 刷新所有依赖项目的面板
+    loadDashboard();
+    loadChecklistForProject();
+    loadQualityTestsForProject();
+    loadDailyLogsForProject();
+            loadInventory();
+            loadPhotos();
+            loadTimelineChart();
+    showToast(`📋 已切换到项目 #${currentProjectId}`);
+}
+
+function loadChecklistForProject() {
+    fetch(`/api/checklist?project_id=${currentProjectId}`)
+    .then(r => r.json())
+    .then(data => {
+        checklistData = data;
+        saveChecklistToLocal();
+        renderChecklist();
+    });
+}
+
+function loadQualityTestsForProject() {
+    fetch(`/api/quality-tests?project_id=${currentProjectId}`)
+    .then(r => r.json())
+    .then(data => {
+        qualityTestData = data.templates;
+        qualityTestResults = data.results || {};
+        renderQualityTests();
+    });
+}
+
+function loadDailyLogsForProject() {
+    fetch(`/api/daily-logs?project_id=${currentProjectId}`)
+    .then(r => r.json())
+    .then(logs => {
+        renderDailyLogs(logs);
+    });
+}
+
+function showNewProjectDialog() {
+    const name = prompt('请输入项目名称:', '新建无机磨石项目');
+    if (!name) return;
+    const area = prompt('施工面积 (m²):', '100');
+    if (!area) return;
+    const location = prompt('施工地点:', '') || '';
+
+    fetch('/api/projects', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, area: parseFloat(area), location})
+    })
+    .then(r => r.json())
+    .then(data => {
+        showToast(`✅ 项目已创建 (ID=${data.id})`);
+        loadProjects().then(() => {
+            currentProjectId = data.id;
+            document.getElementById('projectSelector').value = data.id;
+            switchProject();
+        });
+    });
+}
+
+function renderQualityTests() {
+    const container = document.getElementById('qualityTestList');
+    if (!container) return;
+    container.innerHTML = '';
+    (qualityTestData || []).forEach(t => {
+        const val = qualityTestResults[t.id] || '';
+        const isPassed = qualityTestResults[t.id + '_pass'] || false;
+        const card = document.createElement('div');
+        card.className = 'param-card';
+        card.style.padding = '10px';
+        card.innerHTML = \`
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <strong style="font-size:0.85rem;">\${t.name}</strong>
+                <span style="font-size:0.75rem;color:#888;">\${t.phase}</span>
+            </div>
+            <div style="font-size:0.8rem;color:#666;margin:4px 0;">标准: \${t.standard}</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="qt-\${t.id}" value="\${val}" placeholder="输入实测值"
+                       style="flex:1;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.85rem;"
+                       onchange="onQualityTestChange('\${t.id}')">
+                <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;cursor:pointer;">
+                    <input type="checkbox" id="qt-\${t.id}_pass" \${isPassed ? 'checked' : ''}
+                           onchange="onQualityTestChange('\${t.id}')"> 合格
+                </label>
+            </div>
+        \`;
+        container.appendChild(card);
+    });
+}
+
+function renderDailyLogs(logs) {
+    const container = document.getElementById('logListContainer');
+    if (!container) return;
+    if (!logs || logs.length === 0) {
+        container.innerHTML = '<p style="color:#999;text-align:center;padding:2rem;">暂无施工日志记录</p>';
+        return;
+    }
+    let html = '';
+    logs.forEach(log => {
+        html += \`
+        <div class="param-card" style="margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h4 style="margin:0;font-size:0.9rem;">📅 \${log.log_date} | \${log.project_id ? '#'+log.project_id : ''}</h4>
+                <span style="font-size:0.75rem;color:#999;">🌤️ \${log.weather} \${log.temperature}℃</span>
+            </div>
+            <div style="font-size:0.85rem;color:#555;margin-top:6px;">
+                <div>👷 \${log.workers}人</div>
+                \${log.work_content ? '<div><strong>工作内容:</strong> ' + log.work_content + '</div>' : ''}
+                \${log.issues && log.issues !== '无' ? '<div style="color:#e67e22;"><strong>⚠️</strong> ' + log.issues + '</div>' : ''}
+            </div>
+        </div>\`;
+    });
+    container.innerHTML = html;
+}
+
+// Override saveQualityTests to include project_id
+const _origSaveQualityTests = window.saveQualityTests;
+window.saveQualityTests = function() {
+    fetch('/api/quality-tests', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: currentProjectId, results: qualityTestResults})
+    })
+    .then(r => r.json())
+    .then(() => showToast('🧪 检测记录已保存'))
+    .catch(() => showToast('⚠️ 保存失败', 'info'));
+};
+
+// Override saveDailyLog to include project_id
+const _origSaveDailyLog = window.saveDailyLog;
+window.saveDailyLog = function() {
+    const data = {
+        project_id: currentProjectId,
+        date: document.getElementById('logDate').value,
+        weather: document.getElementById('logWeather').value,
+        temperature: document.getElementById('logTemp').value,
+        workers: parseInt(document.getElementById('logWorkers').value) || 5,
+        work_content: document.getElementById('logContent').value,
+        materials_used: document.getElementById('logMaterials').value,
+        issues: document.getElementById('logIssues').value || '无',
+    };
+    fetch('/api/daily-log', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.status === 'ok') {
+            showToast('📝 日志已保存');
+            document.getElementById('logContent').value = '';
+            document.getElementById('logMaterials').value = '';
+            document.getElementById('logIssues').value = '无';
+            loadDailyLogsForProject();
+            loadInventory();
+            loadPhotos();
+            loadTimelineChart();
+        }
+    })
+    .catch(() => showToast('⚠️ 保存失败', 'info'));
+};
+
+
+// ============================================================
+// 库存管理
+// ============================================================
+function loadInventory() {
+    fetch(`/api/inventory?project_id=${currentProjectId}`)
+    .then(r => r.json())
+    .then(data => {
+        // 库存汇总
+        const invBody = document.getElementById('inventoryBody');
+        invBody.innerHTML = '';
+        if (data.inventory.length === 0) {
+            invBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:2rem;">暂无库存记录</td></tr>';
+        } else {
+            data.inventory.forEach(item => {
+                const row = invBody.insertRow();
+                row.innerHTML = `<td><strong>${item.material_name}</strong></td>
+                    <td>${item.total_kg.toFixed(1)}</td>
+                    <td>${item.total_packages}</td>
+                    <td>¥${item.total_cost.toFixed(0)}</td>
+                    <td>${item.record_count}次</td>`;
+            });
+        }
+
+        // 出入库记录
+        const recBody = document.getElementById('invRecordsBody');
+        recBody.innerHTML = '';
+        if (data.records.length === 0) {
+            recBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:2rem;">暂无出入库记录</td></tr>';
+        } else {
+            data.records.forEach(r => {
+                const row = recBody.insertRow();
+                row.innerHTML = `<td>${r.record_date}</td>
+                    <td>${r.material_name}</td>
+                    <td>${r.quantity_kg.toFixed(1)}</td>
+                    <td>${r.quantity_packages}</td>
+                    <td>¥${r.unit_price.toFixed(0)}</td>
+                    <td>¥${r.total_cost.toFixed(0)}</td>`;
+            });
+        }
+    });
+}
+
+function showAddMaterialDialog() {
+    // 先获取材料列表
+    fetch('/api/materials-list')
+    .then(r => r.json())
+    .then(materials => {
+        let html = '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;" onclick="this.remove()">';
+        html += '<div style="background:white;border-radius:12px;padding:24px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">';
+        html += '<h3 style="margin-bottom:16px;">📥 材料入库</h3>';
+        html += '<div class="form-group"><label>材料名称</label><select id="dlgMatName" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">';
+        materials.forEach(m => {
+            html += `<option value="${m.name}" data-price="${m.unit_price}">${m.name} (${m.note})</option>`;
+        });
+        html += '</select></div>';
+        html += '<div class="form-group"><label>数量 (kg)</label><input type="number" id="dlgMatQty" value="1000" min="1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>';
+        html += '<div class="form-group"><label>单价 (元)</label><input type="number" id="dlgMatPrice" value="0" min="0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>';
+        html += '<div class="form-group"><label>入库日期</label><input type="date" id="dlgMatDate" value="' + new Date().toISOString().split('T')[0] + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>';
+        html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+        html += '<button class="btn btn-primary" onclick="submitMaterialIn()" style="flex:1;">✅ 确认入库</button>';
+        html += '<button class="btn" onclick="this.closest(\'[onclick]\').remove()" style="background:#eee;flex:1;">取消</button>';
+        html += '</div></div></div>';
+
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        document.body.appendChild(div.firstElementChild);
+
+        // 材料选择自动更新单价
+        document.getElementById('dlgMatName').addEventListener('change', function() {
+            const price = this.options[this.selectedIndex].dataset.price;
+            document.getElementById('dlgMatPrice').value = price;
+        });
+        document.getElementById('dlgMatName').dispatchEvent(new Event('change'));
+    });
+}
+
+function submitMaterialIn() {
+    const name = document.getElementById('dlgMatName').value;
+    const qty = parseFloat(document.getElementById('dlgMatQty').value) || 0;
+    const price = parseFloat(document.getElementById('dlgMatPrice').value) || 0;
+    const date = document.getElementById('dlgMatDate').value;
+
+    if (!name || qty <= 0) {
+        showToast('⚠️ 请填写完整信息', 'info');
+        return;
+    }
+
+    fetch('/api/inventory', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            project_id: currentProjectId,
+            material_name: name,
+            quantity_kg: qty,
+            unit_price: price,
+            record_date: date,
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        showToast(`📥 ${name} x${qty}kg 入库成功`);
+        // 关闭对话框
+        const dialog = document.querySelector('[style*="fixed"][style*="background:rgba(0,0,0,0.5)"]');
+        if (dialog) dialog.remove();
+        loadInventory();
+    });
+}
+
+// ============================================================
+// 数据导出 & 备份
+// ============================================================
+function exportProjectJSON() {
+    const exportDiv = document.getElementById('exportResult');
+    exportDiv.textContent = '⏳ 正在生成报告...';
+    fetch(`/api/export/${currentProjectId}`)
+    .then(r => r.json())
+    .then(data => {
+        const jsonStr = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonStr], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `project_${currentProjectId}_report_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        exportDiv.textContent = `✅ 报告已导出 (${(jsonStr.length/1024).toFixed(1)}KB)`;
+        showToast('📥 报告已下载');
+    })
+    .catch(e => {
+        exportDiv.textContent = '❌ 导出失败';
+        showToast('❌ 导出失败', 'info');
+    });
+}
+
+
+// ============================================================
+// 深色/浅色主题切换
+// ============================================================
+function toggleTheme() {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('yongyi_theme', next);
+    // 更新按钮文字
+    const btn = document.querySelector('.theme-toggle');
+    if (btn) btn.textContent = next === 'dark' ? '☀️' : '🌓';
+}
+
+function initTheme() {
+    const saved = localStorage.getItem('yongyi_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', saved);
+    const btn = document.querySelector('.theme-toggle');
+    if (btn) btn.textContent = saved === 'dark' ? '☀️' : '🌓';
+}
+
+function showImportDialog() {
+    const html = \`
+    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;" onclick="this.remove()">
+        <div style="background:white;border-radius:12px;padding:24px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+            <h3 style="margin-bottom:16px;">📥 导入项目数据</h3>
+            <p style="font-size:0.85rem;color:#666;margin-bottom:12px;">选择之前导出的JSON文件，恢复项目及其所有数据（日志、检测、材料等）</p>
+            <div class="form-group">
+                <label>选择JSON文件</label>
+                <input type="file" id="importFileInput" accept=".json" style="width:100%;padding:8px;">
+            </div>
+            <div id="importPreview" style="margin-top:8px;font-size:0.85rem;color:#666;display:none;"></div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button class="btn btn-success" onclick="submitImport()" style="flex:1;">📥 导入</button>
+                <button class="btn" onclick="this.closest('[onclick]').remove()" style="background:#eee;flex:1;">取消</button>
+            </div>
+        </div>
+    </div>\`;
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    document.body.appendChild(div.firstElementChild);
+
+    // 预览
+    document.getElementById('importFileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            try {
+                const data = JSON.parse(ev.target.result);
+                const preview = document.getElementById('importPreview');
+                const stats = data.statistics || {};
+                preview.style.display = 'block';
+                preview.innerHTML = \`
+                    <div style="background:#e8f5e9;padding:12px;border-radius:6px;">
+                        <strong>项目:</strong> \${data.project?.name || '未知'}<br>
+                        <strong>面积:</strong> \${data.project?.area || 0}m²<br>
+                        <strong>日志:</strong> \${stats.log_count || 0}条<br>
+                        <strong>质检:</strong> \${stats.quality_count || 0}项<br>
+                        <strong>材料:</strong> \${stats.material_records || 0}条
+                    </div>
+                \`;
+                window._importData = data;
+            } catch(e) {
+                document.getElementById('importPreview').innerHTML = '<div style="color:#e74c3c;">❌ 无效的JSON文件</div>';
+            }
+        };
+        reader.readAsText(file);
+    });
+}
+
+function submitImport() {
+    if (!window._importData) {
+        showToast('⚠️ 请先选择有效的JSON文件', 'info');
+        return;
+    }
+    fetch('/api/import', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(window._importData)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.project_id) {
+            showToast(\`✅ 项目 "\${data.project_name}" 导入成功 (ID=\${data.project_id})\`);
+            const dialog = document.querySelector('[style*="fixed"][style*="background:rgba(0,0,0,0.5)"]');
+            if (dialog) dialog.remove();
+            // 刷新项目列表
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast('❌ 导入失败: ' + (data.error || ''), 'info');
+        }
+    })
+    .catch(e => showToast('❌ 导入失败: ' + e.message, 'info'));
+}
+
+
+function backupDatabase() {
+    const exportDiv = document.getElementById('exportResult');
+    exportDiv.textContent = '⏳ 正在备份数据库...';
+    fetch('/api/backup', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        const path = data.backup_path.split('/').pop();
+        exportDiv.innerHTML = `✅ 备份成功: <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">${path}</code>`;
+        showToast('💾 数据库已备份');
+    })
+    .catch(e => {
+        exportDiv.textContent = '❌ 备份失败';
+        showToast('❌ 备份失败', 'info');
+    });
+}
+
+// ============================================================
+// 施工照片墙
+// ============================================================
+function loadPhotos() {
+    const phase = document.getElementById('photoPhaseFilter').value;
+    const url = `/api/photos?project_id=${currentProjectId}${phase ? '&phase=' + phase : ''}`;
+    
+    fetch(url)
+    .then(r => r.json())
+    .then(photos => {
+        const gallery = document.getElementById('photoGallery');
+        if (photos.length === 0) {
+            gallery.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#999;">暂无照片，点击上方"上传照片"添加</div>';
+            return;
+        }
+        gallery.innerHTML = '';
+        photos.forEach(photo => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.style.padding = '12px';
+            card.style.breakInside = 'avoid';
+            
+            const phaseColors = {'基层处理':'#3498db','抗裂砂浆施工':'#e67e22','面层施工':'#9b59b6','打磨抛光':'#27ae60','密封固化':'#f1c40f','最终验收':'#e74c3c'};
+            const phaseColor = phaseColors[photo.phase] || '#95a5a6';
+            
+            card.innerHTML = `
+                <div style="position:relative;width:100%;height:180px;background:#f5f5f5;border-radius:6px;overflow:hidden;margin-bottom:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;"
+                     onclick="window.open('/api/photo/${photo.id}','_blank')">
+                    <img src="/api/photo/${photo.id}" style="max-width:100%;max-height:100%;object-fit:cover;"
+                         onerror="this.outerHTML='<span style=color:#999;font-size:2rem;>📷</span>'">
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.75rem;padding:2px 8px;border-radius:10px;background:${phaseColor}20;color:${phaseColor};font-weight:600;">${photo.phase || '未分类'}</span>
+                    <span style="font-size:0.7rem;color:#999;">${photo.created_at || ''}</span>
+                </div>
+                <div style="font-size:0.85rem;margin-top:4px;color:#555;">${photo.description || ''}</div>
+                <div style="font-size:0.7rem;color:#999;margin-top:4px;">
+                    ${photo.file_size ? (photo.file_size/1024).toFixed(1) + 'KB' : ''}
+                    <button onclick="deletePhoto(${photo.id})" style="float:right;border:none;background:none;color:#e74c3c;cursor:pointer;font-size:0.75rem;">🗑️</button>
+                </div>
+            `;
+            gallery.appendChild(card);
+        });
+    });
+}
+
+function showPhotoUploadDialog() {
+    const html = `
+    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;" onclick="this.remove()">
+        <div style="background:white;border-radius:12px;padding:24px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+            <h3 style="margin-bottom:16px;">📷 上传施工照片</h3>
+            <div class="form-group">
+                <label>施工阶段</label>
+                <select id="uploadPhase" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    <option value="基层处理">基层处理</option>
+                    <option value="抗裂砂浆施工">抗裂砂浆施工</option>
+                    <option value="面层施工">面层施工</option>
+                    <option value="打磨抛光">打磨抛光</option>
+                    <option value="密封固化">密封固化</option>
+                    <option value="最终验收">最终验收</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>照片描述</label>
+                <input type="text" id="uploadDesc" placeholder="如: 基层清理完成" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+            </div>
+            <div class="form-group">
+                <label>选择照片</label>
+                <input type="file" id="uploadFileInput" accept="image/*" style="width:100%;padding:8px;">
+                <div id="uploadPreview" style="margin-top:8px;max-width:100%;max-height:200px;display:none;">
+                    <img id="previewImg" style="max-width:100%;max-height:200px;border-radius:6px;">
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button class="btn btn-primary" onclick="submitPhotoUpload()" style="flex:1;">📤 上传</button>
+                <button class="btn" onclick="this.closest('[onclick]').remove()" style="background:#eee;flex:1;">取消</button>
+            </div>
+        </div>
+    </div>`;
+    
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    document.body.appendChild(div.firstElementChild);
+
+    // 预览
+    document.getElementById('uploadFileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                document.getElementById('previewImg').src = ev.target.result;
+                document.getElementById('uploadPreview').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+}
+
+function submitPhotoUpload() {
+    const fileInput = document.getElementById('uploadFileInput');
+    const file = fileInput.files[0];
+    if (!file) {
+        showToast('⚠️ 请选择照片', 'info');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        const imageData = ev.target.result;
+        const phase = document.getElementById('uploadPhase').value;
+        const desc = document.getElementById('uploadDesc').value;
+
+        fetch('/api/photos', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                project_id: currentProjectId,
+                phase: phase,
+                description: desc,
+                image_data: imageData,
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.id) {
+                showToast('📸 照片已上传');
+                const dialog = document.querySelector('[style*="fixed"][style*="background:rgba(0,0,0,0.5)"]');
+                if (dialog) dialog.remove();
+                loadPhotos();
+            } else {
+                showToast('❌ 上传失败: ' + (data.error || ''), 'info');
+            }
+        });
+    };
+    reader.readAsDataURL(file);
+}
+
+function deletePhoto(photoId) {
+    if (!confirm('确定删除此照片吗？')) return;
+    fetch(`/api/photos/${photoId}`, {method: 'DELETE'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'deleted') {
+            showToast('🗑️ 照片已删除');
+            loadPhotos();
+        }
+    });
+}
+
+// ============================================================
+// 甘特图时间轴 (在看板中)
+// ============================================================
+function loadTimelineChart() {
+    fetch(`/api/timeline/${currentProjectId}`)
+    .then(r => r.json())
+    .then(data => {
+        if (!data.timeline) return;
+
+        // 更新看板中的甘特图
+        const timelineContainer = document.getElementById('timelineContainer');
+        if (!timelineContainer) return;
+
+        let html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.8rem;">';
+        html += '<thead><tr><th style="text-align:left;padding:6px;border-bottom:2px solid #eee;">阶段</th>';
+        html += '<th style="text-align:center;padding:6px;border-bottom:2px solid #eee;">计划</th>';
+        html += '<th style="text-align:center;padding:6px;border-bottom:2px solid #eee;">实际</th>';
+        html += '<th style="padding:6px;border-bottom:2px solid #eee;width:50%;">进度条</th>';
+        html += '<th style="text-align:right;padding:6px;border-bottom:2px solid #eee;">进度</th></tr></thead><tbody>';
+
+        const colorMap = {
+            '基层处理': '#3498db', '抗裂砂浆施工': '#e67e22', '基层养护': '#f39c12',
+            '面层界面处理': '#9b59b6', '面层浇筑': '#9b59b6', '面层养护': '#8e44ad',
+            '粗磨(60目)': '#27ae60', '中磨(150→500目)': '#2ecc71', '精磨(1000→3000目)': '#1abc9c',
+            '密封固化': '#f1c40f'
+        };
+
+        data.timeline.forEach(phase => {
+            const color = colorMap[phase.phase] || '#95a5a6';
+            const pct = phase.progress || 0;
+            const barWidth = Math.min(pct, 100);
+            html += `<tr>
+                <td style="padding:6px;border-bottom:1px solid #f0f0f0;"><strong>${phase.phase}</strong></td>
+                <td style="text-align:center;padding:6px;border-bottom:1px solid #f0f0f0;color:#888;">${phase.planned_start}~${phase.planned_end}</td>
+                <td style="text-align:center;padding:6px;border-bottom:1px solid #f0f0f0;color:#888;">${phase.actual_days}天</td>
+                <td style="padding:6px;border-bottom:1px solid #f0f0f0;">
+                    <div style="height:20px;background:#f0f0f0;border-radius:10px;overflow:hidden;position:relative;">
+                        <div style="height:100%;width:${barWidth}%;background:${color};border-radius:10px;transition:width 0.5s;"></div>
+                    </div>
+                </td>
+                <td style="text-align:right;padding:6px;border-bottom:1px solid #f0f0f0;font-weight:600;color:${color};">${pct}%</td>
+            </tr>`;
+        });
+
+        html += '</tbody></table></div>';
+        html += `<div style="margin-top:8px;font-size:0.8rem;color:#888;text-align:right;">总计划: ${data.total_planned_days}天 | 总工期: 约22天</div>`;
+        timelineContainer.innerHTML = html;
+    });
+}
+// Override saveChecklistToServer
+const _origSaveChecklist = window.saveChecklistToServer;
+window.saveChecklistToServer = function() {
+    fetch('/api/checklist', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: currentProjectId, items: checklistData})
+    })
+    .then(r => r.json())
+    .then(() => showToast('💾 检查清单已保存'))
+    .catch(() => showToast('⚠️ 保存失败', 'info'));
+    saveChecklistToLocal();
+};
+
+function loadQualityTests() {
+    fetch('/api/quality-tests')
+    .then(r => r.json())
+    .then(data => {
+        qualityTestData = data.templates;
+        qualityTestResults = data.results || {};
+
+        const container = document.getElementById('qualityTestList');
+        container.innerHTML = '';
+        data.templates.forEach(t => {
+            const val = qualityTestResults[t.id] || '';
+            const isPassed = qualityTestResults[t.id + '_pass'] || false;
+            const card = document.createElement('div');
+            card.className = 'param-card';
+            card.style.padding = '10px';
+            card.innerHTML = \`
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <strong style="font-size:0.85rem;">\${t.name}</strong>
+                    <span style="font-size:0.75rem;color:#888;">\${t.phase}</span>
+                </div>
+                <div style="font-size:0.8rem;color:#666;margin:4px 0;">标准: \${t.standard} | 方法: \${t.method}</div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" id="qt-\${t.id}" value="\${val}" placeholder="输入实测值"
+                           style="flex:1;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.85rem;"
+                           onchange="onQualityTestChange('\${t.id}')">
+                    <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;cursor:pointer;">
+                        <input type="checkbox" id="qt-\${t.id}_pass" \${isPassed ? 'checked' : ''}
+                               onchange="onQualityTestChange('\${t.id}')"> 合格
+                    </label>
+                </div>
+            \`;
+            container.appendChild(card);
+        });
+    });
+}
+
+function onQualityTestChange(id) {
+    const val = document.getElementById('qt-' + id).value;
+    const pass = document.getElementById('qt-' + id + '_pass').checked;
+    qualityTestResults[id] = val;
+    qualityTestResults[id + '_pass'] = pass;
+}
+
+function saveQualityTests() {
+    fetch('/api/quality-tests', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(qualityTestResults)
+    })
+    .then(r => r.json())
+    .then(() => showToast('🧪 质量检测记录已保存'))
+    .catch(() => showToast('⚠️ 保存失败', 'info'));
+}
+
+// ============================================================
+// 初始化
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    initTheme();
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('inputStartDate').value = today;
+    document.getElementById('logDate').value = today;
+
+    calculate();
+    loadSchedule();
+    loadParams();
+    
+    // 加载项目列表
+    fetch('/api/projects')
+    .then(r => r.json())
+    .then(projects => {
+        const sel = document.getElementById('projectSelector');
+        sel.innerHTML = '';
+        projects.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `#${p.id} ${p.name}`;
+            sel.appendChild(opt);
+        });
+        if (projects.length > 0) {
+            sel.value = projects[0].id;
+            currentProjectId = parseInt(projects[0].id);
+            loadChecklistForProject();
+            loadDashboard();
+            loadQualityTestsForProject();
+            loadDailyLogsForProject();
+            loadInventory();
+            loadPhotos();
+            loadTimelineChart();
+        }
+    });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,625 @@
+/* ============================================
+   永颐无机磨石 - 施工管理工具 样式
+   ============================================ */
+
+:root {
+    --primary: #1a5276;
+    --primary-light: #2980b9;
+    --secondary: #e67e22;
+    --success: #27ae60;
+    --danger: #e74c3c;
+    --warning: #f39c12;
+    --light-bg: #f8f9fa;
+    --dark-text: #2c3e50;
+    --border-radius: 8px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+    color: var(--dark-text);
+    background: var(--light-bg);
+    line-height: 1.6;
+}
+
+/* Header */
+.app-header {
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
+    color: white;
+    padding: 1.2rem 2rem;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.app-header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.app-header .subtitle {
+    font-size: 0.85rem;
+    opacity: 0.85;
+    margin-top: 0.2rem;
+}
+
+/* Navigation Tabs */
+.nav-tabs {
+    display: flex;
+    gap: 0;
+    background: white;
+    border-bottom: 2px solid #e9ecef;
+    padding: 0 2rem;
+    overflow-x: auto;
+}
+
+.nav-tab {
+    padding: 0.8rem 1.5rem;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: 0.9rem;
+    color: #6c757d;
+    font-weight: 500;
+    position: relative;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.nav-tab:hover {
+    color: var(--primary);
+    background: rgba(41, 128, 185, 0.05);
+}
+
+.nav-tab.active {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.nav-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--primary-light);
+    border-radius: 3px 3px 0 0;
+}
+
+/* Main Content */
+.main-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 2rem;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Cards */
+.card {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.card h2 {
+    font-size: 1.2rem;
+    color: var(--primary);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.card h3 {
+    font-size: 1rem;
+    color: var(--dark-text);
+    margin-bottom: 0.8rem;
+}
+
+/* Calculator Form */
+.calc-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.form-group {
+    margin-bottom: 0.8rem;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 0.3rem;
+    color: #555;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    transition: border-color 0.3s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 3px rgba(41, 128, 185, 0.1);
+}
+
+.btn {
+    display: inline-block;
+    padding: 0.7rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-primary {
+    background: var(--primary-light);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary);
+    transform: translateY(-1px);
+}
+
+.btn-success {
+    background: var(--success);
+    color: white;
+}
+
+.btn-success:hover {
+    background: #219a52;
+    transform: translateY(-1px);
+}
+
+/* Results Table */
+.result-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.result-table th,
+.result-table td {
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.result-table th {
+    background: var(--light-bg);
+    font-weight: 600;
+    color: #555;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.result-table tr:hover {
+    background: #f0f7ff;
+}
+
+.result-table .layer-header td {
+    background: #e8f4fd;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+/* Checklist */
+.checklist-category {
+    margin-bottom: 1rem;
+}
+
+.checklist-category h3 {
+    background: var(--light-bg);
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.checklist-category h3 .progress-badge {
+    font-size: 0.8rem;
+    background: var(--primary-light);
+    color: white;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+}
+
+.checklist-item {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid #f5f5f5;
+    transition: background 0.2s;
+}
+
+.checklist-item:hover {
+    background: #f8f9ff;
+}
+
+.checklist-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-right: 0.8rem;
+    accent-color: var(--success);
+    cursor: pointer;
+}
+
+.checklist-item label {
+    cursor: pointer;
+    font-size: 0.9rem;
+    flex: 1;
+}
+
+.checklist-item.checked label {
+    text-decoration: line-through;
+    color: #999;
+}
+
+/* Progress Bar */
+.progress-bar {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 1rem 0;
+}
+
+.progress-bar .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success), #2ecc71);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+/* Schedule Table */
+.schedule-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.schedule-table th,
+.schedule-table td {
+    padding: 0.7rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.schedule-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.phase-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.phase-prep { background: #e1f5fe; color: #01579b; }
+.phase-base { background: #fff3e0; color: #e65100; }
+.phase-surface { background: #f3e5f5; color: #4a148c; }
+.phase-grind { background: #e8f5e9; color: #1b5e20; }
+.phase-seal { background: #fff9c4; color: #f57f17; }
+.phase-accept { background: #fce4ec; color: #880e4f; }
+
+/* Parameter Grid */
+.param-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.param-card {
+    background: white;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.param-card h4 {
+    font-size: 0.9rem;
+    color: var(--primary);
+    margin-bottom: 0.5rem;
+}
+
+.param-card .param-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    font-size: 0.85rem;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.param-card .param-item:last-child {
+    border-bottom: none;
+}
+
+.param-card .param-label {
+    color: #666;
+}
+
+.param-card .param-value {
+    font-weight: 600;
+    color: var(--dark-text);
+}
+
+/* Summary Stats */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.2rem;
+    text-align: center;
+    box-shadow: var(--shadow);
+}
+
+.stat-card .stat-number {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.stat-card .stat-label {
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 0.3rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .app-header {
+        padding: 1rem;
+    }
+    .nav-tabs {
+        padding: 0 1rem;
+    }
+    .nav-tab {
+        padding: 0.6rem 1rem;
+        font-size: 0.8rem;
+    }
+    .main-content {
+        padding: 1rem;
+    }
+    .calc-form {
+        grid-template-columns: 1fr;
+    }
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Print */
+@media print {
+    .nav-tabs, .app-header { display: none; }
+    .tab-panel { display: block !important; }
+    .card { box-shadow: none; border: 1px solid #ddd; }
+}
+
+/* ============================================
+   深色模式
+   ============================================ */
+[data-theme="dark"] {
+    --primary: #2980b9;
+    --primary-light: #3498db;
+    --secondary: #f39c12;
+    --success: #2ecc71;
+    --danger: #e74c3c;
+    --light-bg: #1a1a2e;
+    --dark-text: #e0e0e0;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] body {
+    background: #16213e;
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] .card {
+    background: #1a1a2e;
+    border-color: #2a2a4a;
+}
+
+[data-theme="dark"] .result-table th,
+[data-theme="dark"] .schedule-table th {
+    background: #16213e;
+    color: #aaa;
+}
+
+[data-theme="dark"] .result-table td,
+[data-theme="dark"] .schedule-table td {
+    border-color: #2a2a4a;
+    color: #ccc;
+}
+
+[data-theme="dark"] .result-table tr:hover {
+    background: #1a2744;
+}
+
+[data-theme="dark"] .layer-header td {
+    background: #0f3460 !important;
+    color: #85c1e9;
+}
+
+[data-theme="dark"] .param-card {
+    background: #1a1a2e;
+    border-color: #2a2a4a;
+}
+
+[data-theme="dark"] .param-card .param-item {
+    border-color: #2a2a4a;
+}
+
+[data-theme="dark"] .nav-tabs {
+    background: #1a1a2e;
+    border-color: #2a2a4a;
+}
+
+[data-theme="dark"] .nav-tab {
+    color: #888;
+}
+
+[data-theme="dark"] .nav-tab:hover {
+    color: #3498db;
+    background: rgba(52,152,219,0.1);
+}
+
+[data-theme="dark"] .nav-tab.active {
+    color: #3498db;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+    background: #16213e;
+    border-color: #2a2a4a;
+    color: #e0e0e0;
+}
+
+[data-theme="dark"] input:focus,
+[data-theme="dark"] select:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52,152,219,0.2);
+}
+
+[data-theme="dark"] .stat-card {
+    background: #1a1a2e;
+}
+
+[data-theme="dark"] .phase-badge {
+    opacity: 0.8;
+}
+
+[data-theme="dark"] .checklist-category h3 {
+    background: #16213e;
+}
+
+[data-theme="dark"] .checklist-item {
+    border-color: #2a2a4a;
+}
+
+[data-theme="dark"] .checklist-item:hover {
+    background: #1a2744;
+}
+
+[data-theme="dark"] .progress-bar {
+    background: #2a2a4a;
+}
+
+[data-theme="dark"] .app-header {
+    background: linear-gradient(135deg, #0f3460, #1a5276);
+}
+
+[data-theme="dark"] .toast {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+/* 主题切换按钮 */
+.theme-toggle {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 20px;
+    color: white;
+    cursor: pointer;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.theme-toggle:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+[data-theme="dark"] .theme-toggle {
+    background: rgba(255,255,255,0.1);
+}
+
+/* 移动端优化 */
+@media (max-width: 576px) {
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .stat-card {
+        padding: 10px;
+    }
+    .stat-card .stat-number {
+        font-size: 1.3rem;
+    }
+    .card {
+        padding: 12px;
+    }
+    .card h2 {
+        font-size: 1rem;
+    }
+    .result-table {
+        font-size: 0.75rem;
+    }
+    .result-table th,
+    .result-table td {
+        padding: 4px 6px;
+    }
+    .param-grid {
+        grid-template-columns: 1fr;
+    }
+    .calc-form {
+        grid-template-columns: 1fr;
+    }
+    .nav-tab {
+        padding: 0.5rem 0.7rem;
+        font-size: 0.7rem;
+    }
+    .app-header h1 {
+        font-size: 1.1rem;
+    }
+    #photoGallery {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
+    }
+}

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统管理 - 永颐施工平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width:768px) { .admin-grid { grid-template-columns: 1fr; } }
+        .stat-number-lg { font-size: 2.2rem; font-weight: 700; color: #1a5276; }
+        .config-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; }
+        .config-row input { width: 120px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; text-align: right; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+        .table-wrap { max-height: 400px; overflow-y: auto; }
+        .project-checkbox { width: 18px; height: 18px; cursor: pointer; }
+    </style>
+</head>
+<body>
+<header class="app-header no-print">
+    <h1>⚙️ 系统管理中心</h1>
+    <div class="subtitle">配置管理 · 数据维护 · 批量操作 | <a href="/" style="color:white;">← 返回主平台</a></div>
+</header>
+
+<main class="main-content">
+    <!-- 系统状态 -->
+    <div class="card">
+        <h2>📊 系统运行状态</h2>
+        <div id="systemStats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;text-align:center;">
+            <div>加载中...</div>
+        </div>
+    </div>
+
+    <div class="admin-grid">
+        <!-- 配置管理 -->
+        <div class="card">
+            <h2>⚙️ 系统设置</h2>
+            <div id="configSection"></div>
+            <button class="btn btn-primary" onclick="saveConfig()" style="margin-top:12px;">💾 保存设置</button>
+        </div>
+
+        <!-- 数据维护 -->
+        <div class="card">
+            <h2>🗄️ 数据维护</h2>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="optimizeDB()">⚡ 优化数据库</button>
+                <button class="btn btn-success" onclick="backupDB()">💾 备份</button>
+                <button class="btn" onclick="cleanupData()" style="background:#fff3e0;color:#e65100;">🗑️ 清理旧数据</button>
+            </div>
+            <div id="dbResult" style="margin-top:8px;font-size:0.85rem;color:#666;"></div>
+
+            <h3 style="margin-top:16px;font-size:0.9rem;">📋 数据库表状态</h3>
+            <div id="dbTables"></div>
+        </div>
+    </div>
+
+    <!-- 批量项目管理 -->
+    <div class="card">
+        <h2>📋 批量项目管理</h2>
+        <div class="action-bar">
+            <button class="btn btn-primary" onclick="selectAllProjects()">✅ 全选</button>
+            <button class="btn" onclick="deselectAllProjects()" style="background:#eee;">🔲 取消全选</button>
+            <button class="btn btn-success" onclick="batchExport()">📥 批量导出</button>
+            <button class="btn" onclick="batchDelete()" style="background:#fce4ec;color:#c62828;">🗑️ 批量删除</button>
+        </div>
+        <div class="table-wrap">
+            <table class="result-table" id="projectTable">
+                <thead><tr><th style="width:40px;">选择</th><th>ID</th><th>项目名称</th><th>面积(m²)</th><th>状态</th><th>检查项</th><th>日志</th></tr></thead>
+                <tbody id="projectBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="no-print" style="text-align:center;padding:16px;color:#999;font-size:0.8rem;">
+        永颐无机磨石 · 施工管理平台 v3.6
+    </div>
+</main>
+
+<script>
+function loadSystemStatus() {
+    fetch('/api/system/status')
+    .then(r => r.json())
+    .then(data => {
+        const statsDiv = document.getElementById('systemStats');
+        statsDiv.innerHTML = \`
+            <div><div class="stat-number-lg">\${data.version}</div><div style="font-size:0.8rem;color:#888;">版本</div></div>
+            <div><div class="stat-number-lg">\${data.total_records}</div><div style="font-size:0.8rem;color:#888;">数据记录</div></div>
+            <div><div class="stat-number-lg">\${data.db_size_mb}MB</div><div style="font-size:0.8rem;color:#888;">数据库</div></div>
+            <div><div class="stat-number-lg">\${data.uptime}</div><div style="font-size:0.8rem;color:#888;">运行时间</div></div>
+        \`;
+    });
+    loadConfig();
+    loadProjectTable();
+    loadDBTables();
+}
+
+function loadConfig() {
+    fetch('/api/config')
+    .then(r => r.json())
+    .then(config => {
+        const div = document.getElementById('configSection');
+        let html = '';
+        if (config.system) {
+            html += '<h4 style="font-size:0.85rem;color:#888;margin-top:8px;">系统</h4>';
+            html += \`<div class="config-row"><span>平台名称</span><input id="cfg_system_name" value="\${config.system.name||''}"></div>\`;
+            html += \`<div class="config-row"><span>公司名称</span><input id="cfg_system_company" value="\${config.system.company||''}"></div>\`;
+        }
+        if (config.project) {
+            html += '<h4 style="font-size:0.85rem;color:#888;margin-top:8px;">项目默认值</h4>';
+            html += \`<div class="config-row"><span>基层厚度(mm)</span><input id="cfg_project_base" type="number" value="\${config.project.default_base_thickness||50}"></div>\`;
+            html += \`<div class="config-row"><span>面层厚度(mm)</span><input id="cfg_project_surface" type="number" value="\${config.project.default_surface_thickness||15}"></div>\`;
+        }
+        if (config.backup) {
+            html += '<h4 style="font-size:0.85rem;color:#888;margin-top:8px;">备份</h4>';
+            html += \`<div class="config-row"><span>自动备份间隔(天)</span><input id="cfg_backup_days" type="number" value="\${config.backup.backup_interval_days||7}"></div>\`;
+            html += \`<div class="config-row"><span>最大备份数</span><input id="cfg_backup_max" type="number" value="\${config.backup.max_backups||10}"></div>\`;
+        }
+        div.innerHTML = html || '<p style="color:#999;">加载配置失败</p>';
+    });
+}
+
+function saveConfig() {
+    const updates = {
+        system: {
+            name: document.getElementById('cfg_system_name')?.value || '',
+            company: document.getElementById('cfg_system_company')?.value || '',
+        },
+        project: {
+            default_base_thickness: parseInt(document.getElementById('cfg_project_base')?.value) || 50,
+            default_surface_thickness: parseInt(document.getElementById('cfg_project_surface')?.value) || 15,
+        },
+        backup: {
+            backup_interval_days: parseInt(document.getElementById('cfg_backup_days')?.value) || 7,
+            max_backups: parseInt(document.getElementById('cfg_backup_max')?.value) || 10,
+        }
+    };
+
+    let saved = 0;
+    Promise.all(Object.entries(updates).map(([section, values]) =>
+        fetch('/api/config', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({section, updates: values})
+        }).then(r => r.json()).then(d => { if (d.status === 'ok') saved++; })
+    )).then(() => {
+        showToast(\`✅ 已保存 \${saved} 项设置\`);
+    });
+}
+
+function loadProjectTable() {
+    fetch('/api/projects')
+    .then(r => r.json())
+    .then(projects => {
+        const tbody = document.getElementById('projectBody');
+        tbody.innerHTML = '';
+        projects.forEach(p => {
+            const row = tbody.insertRow();
+            row.innerHTML = \`
+                <td><input type="checkbox" class="project-checkbox" value="\${p.id}"></td>
+                <td>\${p.id}</td>
+                <td><a href="/project/\${p.id}/dashboard" style="color:#2980b9;">\${p.name}</a></td>
+                <td>\${p.area}</td>
+                <td><span class="phase-badge phase-\${p.status === '进行中' ? 'base' : 'seal'}">\${p.status}</span></td>
+                <td>\${p.checked_items||0}/\${p.total_items||0}</td>
+                <td>\${p.log_count||0}</td>
+            \`;
+        });
+    });
+}
+
+function loadDBTables() {
+    fetch('/api/system/stats')
+    .then(r => r.json())
+    .then(stats => {
+        const div = document.getElementById('dbTables');
+        const tables = ['projects','daily_logs','quality_tests','checklist_state','material_records','photos'];
+        let html = '<table class="result-table"><thead><tr><th>表名</th><th>记录数</th></tr></thead><tbody>';
+        tables.forEach(t => {
+            if (stats[t] !== undefined) {
+                html += \`<tr><td>\${t}</td><td>\${stats[t]}条</td></tr>\`;
+            }
+        });
+        html += '</tbody></table>';
+        div.innerHTML = html;
+    });
+}
+
+function selectAllProjects() {
+    document.querySelectorAll('.project-checkbox').forEach(cb => cb.checked = true);
+}
+
+function deselectAllProjects() {
+    document.querySelectorAll('.project-checkbox').forEach(cb => cb.checked = false);
+}
+
+function getSelectedProjectIds() {
+    return Array.from(document.querySelectorAll('.project-checkbox:checked')).map(cb => parseInt(cb.value));
+}
+
+function batchExport() {
+    const ids = getSelectedProjectIds();
+    if (ids.length === 0) { showToast('⚠️ 请先选择项目', 'info'); return; }
+    fetch('/api/projects/batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'export', ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        const blob = new Blob([JSON.stringify(data.exports, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = \`batch_export_\${ids.length}projects.json\`; a.click();
+        URL.revokeObjectURL(url);
+        showToast(\`📥 已导出 \${data.results.success} 个项目\`);
+    });
+}
+
+function batchDelete() {
+    const ids = getSelectedProjectIds();
+    if (ids.length === 0) { showToast('⚠️ 请先选择项目', 'info'); return; }
+    if (!confirm(\`确定要删除 \${ids.length} 个项目吗？此操作不可恢复！\`)) return;
+    fetch('/api/projects/batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'delete', ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        showToast(\`🗑️ 已删除 \${data.results.success} 个项目\`);
+        loadProjectTable();
+        loadSystemStatus();
+    });
+}
+
+function optimizeDB() {
+    document.getElementById('dbResult').textContent = '⏳ 优化中...';
+    fetch('/api/system/optimize', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+        document.getElementById('dbResult').innerHTML = \`✅ 数据库优化完成 (索引: \${d.result?.indexes_created || 0}个)\`;
+        loadDBTables();
+    });
+}
+
+function backupDB() {
+    document.getElementById('dbResult').textContent = '⏳ 备份中...';
+    fetch('/api/backup', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+        const path = d.backup_path?.split('/').pop() || '';
+        document.getElementById('dbResult').innerHTML = \`✅ 备份成功: <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">\${path}</code>\`;
+    });
+}
+
+function cleanupData() {
+    const days = prompt('保留最近多少天的数据？(超过此天数的日志和照片将被清理)', '90');
+    if (!days) return;
+    if (!confirm(\`确定要清理 \${days} 天前的旧数据吗？\`)) return;
+    document.getElementById('dbResult').textContent = '⏳ 清理中...';
+    fetch('/api/system/cleanup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({days: parseInt(days)})
+    })
+    .then(r => r.json())
+    .then(d => {
+        const r = d.result || {};
+        document.getElementById('dbResult').innerHTML = \`✅ 清理完成: 日志\${r.deleted_logs||0}条, 照片\${r.deleted_photos||0}条\`;
+        loadDBTables();
+        loadProjectTable();
+    });
+}
+
+// 初始化
+document.addEventListener('DOMContentLoaded', function() {
+    loadSystemStatus();
+});
+</script>
+</body>
+</html>

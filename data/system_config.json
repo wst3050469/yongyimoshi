@@ -1,0 +1,37 @@
+{
+  "system": {
+    "name": "永颐无机磨石 · 施工管理平台",
+    "version": "3.7.0",
+    "company": "浙江永颐装饰工程有限公司",
+    "maintainer": "",
+    "language": "zh-CN"
+  },
+  "project": {
+    "default_base_thickness": 50,
+    "default_surface_thickness": 15,
+    "max_projects": 100
+  },
+  "display": {
+    "theme": "dark",
+    "items_per_page": 20,
+    "chart_style": "bar"
+  },
+  "notifications": {
+    "enable_reminders": true,
+    "curing_reminder_days": [
+      7,
+      3,
+      1
+    ],
+    "test_reminder_days": [
+      28,
+      14,
+      7
+    ]
+  },
+  "backup": {
+    "auto_backup": true,
+    "backup_interval_days": 7,
+    "max_backups": 10
+  }
+}
