@@ -1138,6 +1138,207 @@ def api_export_csv(table_name):
     return response
 
 
+# ============================================================
+# 安全管理
+# ============================================================
+
+from database import (
+    add_safety_check, get_safety_checks, get_safety_check, delete_safety_check,
+    get_safety_check_templates,
+    add_safety_incident, get_safety_incidents, update_safety_incident,
+    delete_safety_incident,
+    add_document, get_documents, get_document, delete_document,
+)
+
+
+@app.route('/safety')
+def safety_page():
+    return render_template('safety.html')
+
+
+@app.route('/documents')
+def documents_page():
+    return render_template('documents.html')
+
+
+@app.route('/calendar')
+def calendar_page():
+    return render_template('calendar.html')
+
+
+@app.route('/api/safety/templates')
+def api_safety_templates():
+    return jsonify(get_safety_check_templates())
+
+
+@app.route('/api/safety/checks', methods=['GET'])
+def api_safety_checks_list():
+    pid = request.args.get('project_id', 0, type=int)
+    if not pid:
+        return api_error("缺少 project_id")
+    return jsonify(get_safety_checks(pid))
+
+
+@app.route('/api/safety/checks', methods=['POST'])
+def api_safety_checks_add():
+    import json as _json
+    data = request.get_json()
+    if not data or not data.get('project_id'):
+        return api_error("缺少 project_id")
+    items = data.get('items', [])
+    sid = add_safety_check(
+        project_id=int(data['project_id']),
+        check_date=data.get('check_date', ''),
+        inspector=data.get('inspector', ''),
+        check_type=data.get('check_type', '日常检查'),
+        items=_json.dumps(items, ensure_ascii=False),
+        result=data.get('result', '合格'),
+        rectification=data.get('rectification', ''),
+        notes=data.get('notes', ''),
+    )
+    return jsonify({"status": "ok", "id": sid})
+
+
+@app.route('/api/safety/checks/<int:sid>', methods=['GET'])
+def api_safety_check_get(sid):
+    sc = get_safety_check(sid)
+    if not sc:
+        return api_error("记录不存在")
+    import json as _json
+    try:
+        sc['items_list'] = _json.loads(sc.get('items', '[]'))
+    except:
+        sc['items_list'] = []
+    return jsonify(sc)
+
+
+@app.route('/api/safety/checks/<int:sid>', methods=['DELETE'])
+def api_safety_check_delete(sid):
+    delete_safety_check(sid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/safety/incidents', methods=['GET'])
+def api_safety_incidents_list():
+    pid = request.args.get('project_id', 0, type=int)
+    if not pid:
+        return api_error("缺少 project_id")
+    return jsonify(get_safety_incidents(pid))
+
+
+@app.route('/api/safety/incidents', methods=['POST'])
+def api_safety_incidents_add():
+    data = request.get_json()
+    if not data or not data.get('project_id'):
+        return api_error("缺少 project_id")
+    iid = add_safety_incident(
+        project_id=int(data['project_id']),
+        incident_date=data.get('incident_date', ''),
+        incident_type=data.get('incident_type', '其他'),
+        severity=data.get('severity', '轻微'),
+        description=data.get('description', ''),
+        injured_person=data.get('injured_person', ''),
+        treatment=data.get('treatment', ''),
+        root_cause=data.get('root_cause', ''),
+        preventive_measures=data.get('preventive_measures', ''),
+    )
+    return jsonify({"status": "ok", "id": iid})
+
+
+@app.route('/api/safety/incidents/<int:iid>', methods=['PUT'])
+def api_safety_incidents_update(iid):
+    data = request.get_json() or {}
+    ok = update_safety_incident(iid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/safety/incidents/<int:iid>', methods=['DELETE'])
+def api_safety_incidents_delete(iid):
+    delete_safety_incident(iid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/documents', methods=['GET'])
+def api_documents_list():
+    pid = request.args.get('project_id', 0, type=int)
+    doc_type = request.args.get('type', '')
+    return jsonify(get_documents(pid, doc_type))
+
+
+@app.route('/api/documents', methods=['POST'])
+def api_documents_upload():
+    pid = request.form.get('project_id', 0, type=int)
+    title = request.form.get('title', '未命名文档')
+    doc_type = request.form.get('doc_type', 'other')
+    description = request.form.get('description', '')
+    version = request.form.get('version', 'v1.0')
+    tags = request.form.get('tags', '[]')
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return api_error("请选择文件")
+    file_data = file.read()
+    result = add_document(
+        project_id=pid, title=title, doc_type=doc_type,
+        description=description, filename=file.filename,
+        file_data=file_data, version=version, tags=tags,
+    )
+    return jsonify({"status": "ok", "document": result})
+
+
+@app.route('/api/documents/<int:did>/download')
+def api_documents_download(did):
+    doc = get_document(did)
+    if not doc:
+        return api_error("文档不存在")
+    filepath = os.path.join(os.path.dirname(__file__), 'data', 'documents', doc['filename'])
+    if not os.path.exists(filepath):
+        return api_error("文件不存在")
+    from flask import send_file
+    return send_file(filepath, as_attachment=True,
+                     download_name=doc['filename'].split('_', 1)[-1] if '_' in doc['filename'] else doc['filename'])
+
+
+@app.route('/api/documents/<int:did>', methods=['DELETE'])
+def api_documents_delete(did):
+    delete_document(did)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/calendar')
+def api_calendar():
+    from database import get_projects, get_daily_logs, get_acceptances
+    events = []
+    for proj in get_projects():
+        pid = proj['id']
+        events.append({
+            "id": f"p_start_{pid}", "title": f"🔨 {proj['name']}",
+            "start": proj['start_date'], "end": proj['start_date'],
+            "color": "#2980b9", "project_id": pid, "type": "milestone",
+        })
+        for acc in get_acceptances(pid):
+            events.append({
+                "id": f"acc_{acc['id']}",
+                "title": f"📋 {acc['acceptance_type']}",
+                "start": acc['check_date'], "end": acc['check_date'],
+                "color": "#27ae60" if acc['result']=='合格' else "#e74c3c",
+                "project_id": pid, "type": "acceptance",
+            })
+        log_dates = {}
+        for log in get_daily_logs(pid):
+            d = log['log_date']
+            if d not in log_dates:
+                log_dates[d] = {"count": 0, "weathers": set()}
+            log_dates[d]["count"] += 1
+            log_dates[d]["weathers"].add(log.get('weather',''))
+        for date_str, info in log_dates.items():
+            events.append({
+                "id": f"log_{pid}_{date_str}",
+                "title": f"👷 {proj['name']}",
+                "start": date_str, "end": date_str,
+                "color": "#8e44ad", "project_id": pid, "type": "work_day",
+            })
+    return jsonify(events)
+
 
 # ============================================================
 # 错误处理器

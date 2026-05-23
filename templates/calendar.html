@@ -1,0 +1,123 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>施工日历 - 永颐施工平台</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.cal-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.cal-nav h2{margin:0;font-size:1.2rem}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px}
+.cal-header{text-align:center;font-size:0.78rem;color:#888;padding:6px 0;font-weight:600}
+.cal-day{aspect-ratio:1;border:1px solid #eee;border-radius:8px;padding:4px;font-size:0.78rem;cursor:pointer;position:relative;min-height:60px;overflow:hidden}
+.cal-day:hover{border-color:#2980b9;background:#f0f7ff}
+.cal-day.other-month{opacity:0.3}
+.cal-day.today{border-color:#2980b9;background:#e3f2fd;font-weight:700}
+.cal-day .day-num{font-size:0.85rem;font-weight:600;margin-bottom:2px}
+.cal-day .event{font-size:0.6rem;padding:1px 4px;border-radius:4px;margin:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+.event-list{margin-top:8px}
+.event-item{padding:8px 12px;border-left:4px solid;margin-bottom:6px;font-size:0.85rem;background:#f8f9fa;border-radius:0 6px 6px 0}
+.event-item .title{font-weight:600}
+.event-item .meta{font-size:0.75rem;color:#888;margin-top:2px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:0.8rem;margin-bottom:12px}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-dot{width:12px;height:12px;border-radius:3px;display:inline-block}
+</style></head>
+<body>
+<header class="app-header no-print"><h1>📅 施工日历</h1><div class="subtitle">项目时间线 · 施工日志 · 验收节点 | <a href="/" style="color:white;">← 返回</a></div></header>
+<main class="main-content">
+<div class="card">
+    <div class="cal-nav">
+        <button class="btn" onclick="changeMonth(-1)">◀ 上月</button>
+        <h2 id="calTitle">2026年 5月</h2>
+        <button class="btn" onclick="changeMonth(1)">下月 ▶</button>
+    </div>
+    <div class="legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#2980b9;"></span> 开工</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#27ae60;"></span> 验收合格</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#e74c3c;"></span> 验收不合格</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#8e44ad;"></span> 施工日</div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+</div>
+<div class="card">
+    <h2>📋 当天事件</h2>
+    <div id="dayEvents"><p style="color:#999;font-size:0.85rem;">点击日历日期查看事件</p></div>
+</div>
+</main>
+<script>
+let currentYear = new Date().getFullYear();
+let currentMonth = new Date().getMonth();
+let allEvents = [];
+let selectedDate = null;
+
+function loadEvents() {
+    fetch('/api/calendar').then(r=>r.json()).then(events => {
+        allEvents = events;
+        renderCalendar();
+    });
+}
+
+function renderCalendar() {
+    const title = document.getElementById('calTitle');
+    title.textContent = `${currentYear}年 ${currentMonth+1}月`;
+
+    const grid = document.getElementById('calGrid');
+    grid.innerHTML = '日一二三四五六'.split('').map(d => `<div class="cal-header">${d}</div>`).join('');
+
+    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+    const daysInMonth = new Date(currentYear, currentMonth+1, 0).getDate();
+    const today = new Date();
+
+    // Fill empty cells
+    for(let i=0; i<firstDay; i++) {
+        grid.innerHTML += '<div class="cal-day other-month"></div>';
+    }
+
+    for(let d=1; d<=daysInMonth; d++) {
+        const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const isToday = today.getFullYear()===currentYear && today.getMonth()===currentMonth && today.getDate()===d;
+        const dayEvents = allEvents.filter(e => e.start === dateStr);
+
+        let dayHtml = `<div class="cal-day ${isToday?'today':''}" onclick="selectDate('${dateStr}')">`;
+        dayHtml += `<div class="day-num">${d}</div>`;
+
+        // Show up to 3 events
+        const shown = dayEvents.slice(0,3);
+        shown.forEach(e => {
+            dayHtml += `<div class="event" style="background:${e.color}">${e.title.slice(0,12)}</div>`;
+        });
+        if(dayEvents.length > 3) {
+            dayHtml += `<div style="font-size:0.55rem;color:#888;">+${dayEvents.length-3}个</div>`;
+        }
+
+        dayHtml += '</div>';
+        grid.innerHTML += dayHtml;
+    }
+}
+
+function changeMonth(delta) {
+    currentMonth += delta;
+    if(currentMonth > 11) { currentMonth = 0; currentYear++; }
+    if(currentMonth < 0) { currentMonth = 11; currentYear--; }
+    renderCalendar();
+}
+
+function selectDate(dateStr) {
+    selectedDate = dateStr;
+    const events = allEvents.filter(e => e.start === dateStr);
+    const div = document.getElementById('dayEvents');
+    if(events.length === 0) {
+        div.innerHTML = `<p style="color:#999;font-size:0.85rem;">${dateStr} 无事件</p>`;
+        return;
+    }
+    div.innerHTML = `<h3 style="font-size:0.95rem;margin-bottom:8px;">📅 ${dateStr} (${events.length}个事件)</h3>`;
+    events.forEach(e => {
+        const label = e.type==='milestone'?'🏁':(e.type==='acceptance'?'📋':'👷');
+        div.innerHTML += `<div class="event-item" style="border-left-color:${e.color}">
+            <div class="title">${label} ${e.title}</div>
+            <div class="meta">${e.type==='milestone'?'开工里程碑':(e.type==='acceptance'?'验收':'施工日志')}</div>
+        </div>`;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', loadEvents);
+</script></body></html>

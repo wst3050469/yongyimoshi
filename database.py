@@ -248,6 +248,53 @@ def init_db():
             actual_value TEXT DEFAULT '',
             FOREIGN KEY (acceptance_id) REFERENCES acceptance_records(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS safety_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            check_date TEXT NOT NULL,
+            inspector TEXT DEFAULT '',
+            check_type TEXT DEFAULT '日常检查',
+            items TEXT DEFAULT '[]',
+            total_items INTEGER DEFAULT 0,
+            passed_items INTEGER DEFAULT 0,
+            result TEXT DEFAULT '合格',
+            rectification TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS safety_incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            incident_date TEXT NOT NULL,
+            incident_type TEXT DEFAULT '其他',
+            severity TEXT DEFAULT '轻微',
+            description TEXT DEFAULT '',
+            injured_person TEXT DEFAULT '',
+            treatment TEXT DEFAULT '',
+            root_cause TEXT DEFAULT '',
+            preventive_measures TEXT DEFAULT '',
+            is_closed INTEGER DEFAULT 0,
+            closed_date TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER DEFAULT 0,
+            doc_type TEXT DEFAULT 'other',
+            title TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            filename TEXT NOT NULL,
+            file_size INTEGER DEFAULT 0,
+            version TEXT DEFAULT 'v1.0',
+            tags TEXT DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
     """)
 
     conn.commit()
@@ -1427,6 +1474,299 @@ def delete_acceptance(aid: int) -> bool:
 
 
 # ============================================================
+# 安全管理
+# ============================================================
+
+SAFETY_CHECK_TEMPLATES = {
+    "日常检查": [
+        {"item": "安全帽佩戴", "standard": "全员正确佩戴"},
+        {"item": "高处作业防护", "standard": "安全带牢固、脚手架稳固"},
+        {"item": "用电安全", "standard": "电缆无破损、漏保有效"},
+        {"item": "消防器材", "standard": "灭火器在位、压力正常"},
+        {"item": "施工通道", "standard": "畅通无杂物堆放"},
+        {"item": "材料堆放", "standard": "整齐有序、不超高"},
+        {"item": "机械操作", "standard": "持证上岗、防护装置完好"},
+    ],
+    "专项检查": [
+        {"item": "临时用电系统", "standard": "三级配电、两级保护"},
+        {"item": "动火作业审批", "standard": "审批手续齐全、监护人在场"},
+        {"item": "吊装作业", "standard": "吊具完好、指挥信号明确"},
+        {"item": "危化品管理", "standard": "专人保管、存放合规"},
+        {"item": "应急预案", "standard": "预案完善、演练记录齐全"},
+    ],
+    "周检": [
+        {"item": "现场文明施工", "standard": "工完料清、场地整洁"},
+        {"item": "防护设施", "standard": "临边洞口防护到位"},
+        {"item": "施工机具", "standard": "完好无损、定期保养"},
+        {"item": "安全教育", "standard": "每日班前会议记录"},
+        {"item": "劳保用品", "standard": "配备齐全、正确使用"},
+    ],
+}
+
+
+def add_safety_check(project_id: int, check_date: str = "",
+                     inspector: str = "", check_type: str = "日常检查",
+                     items: str = "[]", result: str = "合格",
+                     rectification: str = "", notes: str = "") -> int:
+    """添加安全检查记录"""
+    if not check_date:
+        check_date = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 解析items统计
+    import json as _json
+    try:
+        item_list = _json.loads(items) if isinstance(items, str) else items
+    except:
+        item_list = []
+    total = len(item_list)
+    passed = sum(1 for i in item_list if i.get('passed', False))
+
+    cursor.execute("""
+        INSERT INTO safety_checks (project_id, check_date, inspector, check_type,
+            items, total_items, passed_items, result, rectification, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (project_id, check_date, inspector, check_type, items,
+          total, passed, result, rectification, notes))
+    sid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return sid
+
+
+def get_safety_checks(project_id: int) -> List[Dict]:
+    """获取项目的安全检查记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM safety_checks WHERE project_id = ?
+        ORDER BY check_date DESC, id DESC
+    """, (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_safety_check(sid: int) -> Optional[Dict]:
+    """获取安全检查详情"""
+    conn = get_db()
+    cursor = conn.cursor()
+    row = cursor.execute("SELECT * FROM safety_checks WHERE id = ?", (sid,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_safety_check(sid: int) -> bool:
+    """删除安全检查记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM safety_checks WHERE id = ?", (sid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_safety_check_templates() -> Dict:
+    """获取安全检查模板"""
+    return SAFETY_CHECK_TEMPLATES
+
+
+# ============================================================
+# 安全事故管理
+# ============================================================
+
+def add_safety_incident(project_id: int, incident_date: str = "",
+                        incident_type: str = "其他", severity: str = "轻微",
+                        description: str = "", injured_person: str = "",
+                        treatment: str = "", root_cause: str = "",
+                        preventive_measures: str = "") -> int:
+    """记录安全事故"""
+    if not incident_date:
+        incident_date = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO safety_incidents (project_id, incident_date, incident_type,
+            severity, description, injured_person, treatment, root_cause,
+            preventive_measures)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (project_id, incident_date, incident_type, severity,
+          description, injured_person, treatment, root_cause, preventive_measures))
+    iid = cursor.lastrowid
+
+    # 在同一连接中创建通知（避免循环导入）
+    title = f"🚨 安全事故报告 - {incident_type}"
+    message = f"{severity}事故: {(description or '')[:100]}"
+    cursor.execute("""
+        INSERT INTO notifications (project_id, type, title, message, due_date)
+        VALUES (?, ?, ?, ?, ?)
+    """, (project_id, "safety_alert", title, message, incident_date))
+
+    conn.commit()
+    conn.close()
+    return iid
+
+
+def get_safety_incidents(project_id: int) -> List[Dict]:
+    """获取项目的安全事故记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM safety_incidents WHERE project_id = ?
+        ORDER BY incident_date DESC, id DESC
+    """, (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_safety_incident(iid: int, **kwargs) -> bool:
+    """更新安全事故记录"""
+    allowed = ['is_closed', 'closed_date', 'treatment', 'root_cause',
+               'preventive_measures', 'severity', 'description']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [iid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE safety_incidents SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_safety_incident(iid: int) -> bool:
+    """删除安全事故记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM safety_incidents WHERE id = ?", (iid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# 文档管理
+# ============================================================
+
+DOCUMENTS_DIR = os.path.join(os.path.dirname(__file__), 'data', 'documents')
+
+
+def _ensure_doc_dir():
+    """确保文档目录存在"""
+    os.makedirs(DOCUMENTS_DIR, exist_ok=True)
+
+
+def add_document(project_id: int, title: str, doc_type: str = "other",
+                 description: str = "", filename: str = "",
+                 file_data: bytes = b"", version: str = "v1.0",
+                 tags: str = "[]") -> Dict:
+    """
+    添加文档
+
+    参数:
+        project_id: 项目ID (0=通用文档)
+        title: 文档标题
+        doc_type: 文档类型
+        description: 描述
+        filename: 文件名
+        file_data: 文件二进制数据
+        version: 版本号
+        tags: 标签JSON数组
+
+    返回:
+        文档记录
+    """
+    _ensure_doc_dir()
+
+    # 保存文件
+    import uuid
+    safe_name = f"{uuid.uuid4().hex}_{filename}" if filename else f"{uuid.uuid4().hex}.bin"
+    filepath = os.path.join(DOCUMENTS_DIR, safe_name)
+    with open(filepath, 'wb') as f:
+        f.write(file_data)
+    file_size = os.path.getsize(filepath)
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO documents (project_id, doc_type, title, description,
+            filename, file_size, version, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (project_id, doc_type, title, description, safe_name,
+          file_size, version, tags))
+    did = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": did,
+        "title": title,
+        "filename": safe_name,
+        "file_size": file_size,
+        "url": f"/api/documents/{did}/download",
+    }
+
+
+def get_documents(project_id: int = 0, doc_type: str = "") -> List[Dict]:
+    """获取文档列表"""
+    conn = get_db()
+    cursor = conn.cursor()
+    if project_id and doc_type:
+        rows = cursor.execute("""
+            SELECT d.*, p.name as project_name FROM documents d
+            LEFT JOIN projects p ON d.project_id = p.id
+            WHERE d.project_id = ? AND d.doc_type = ?
+            ORDER BY d.created_at DESC
+        """, (project_id, doc_type)).fetchall()
+    elif project_id:
+        rows = cursor.execute("""
+            SELECT d.*, p.name as project_name FROM documents d
+            LEFT JOIN projects p ON d.project_id = p.id
+            WHERE d.project_id = ?
+            ORDER BY d.created_at DESC
+        """, (project_id,)).fetchall()
+    else:
+        rows = cursor.execute("""
+            SELECT d.*, p.name as project_name FROM documents d
+            LEFT JOIN projects p ON d.project_id = p.id
+            ORDER BY d.created_at DESC LIMIT 100
+        """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_document(did: int) -> Optional[Dict]:
+    """获取单个文档"""
+    conn = get_db()
+    cursor = conn.cursor()
+    row = cursor.execute("""
+        SELECT d.*, p.name as project_name FROM documents d
+        LEFT JOIN projects p ON d.project_id = p.id
+        WHERE d.id = ?
+    """, (did,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_document(did: int) -> bool:
+    """删除文档"""
+    doc = get_document(did)
+    if not doc:
+        return False
+    filepath = os.path.join(DOCUMENTS_DIR, doc['filename'])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM documents WHERE id = ?", (did,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
 # CSV/Excel 导出
 # ============================================================
 
@@ -1877,6 +2217,11 @@ def optimize_database():
         "CREATE INDEX IF NOT EXISTS idx_equip_usage_project ON equipment_usage(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_acceptance_project ON acceptance_records(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_acceptance_items_acc ON acceptance_items(acceptance_id)",
+        "CREATE INDEX IF NOT EXISTS idx_safety_check_project ON safety_checks(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_safety_check_date ON safety_checks(check_date)",
+        "CREATE INDEX IF NOT EXISTS idx_safety_incident_project ON safety_incidents(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type)",
     ]
     for idx in indexes:
         cursor.execute(idx)
@@ -1899,7 +2244,8 @@ def get_db_stats() -> Dict:
               "material_records", "photos", "suppliers", "supplier_prices",
               "curing_records", "workers", "teams", "work_hours",
               "budget_items", "notifications", "equipment", "equipment_usage",
-              "acceptance_records", "acceptance_items"]
+              "acceptance_records", "acceptance_items",
+              "safety_checks", "safety_incidents", "documents"]
     for table in tables:
         count = cursor.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         stats[table] = count

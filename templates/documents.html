@@ -1,0 +1,119 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>文档中心 - 永颐施工平台</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.doc-card{border:1px solid #e0e0e0;border-radius:10px;padding:14px;background:#fff}
+.doc-card .icon{font-size:2rem;text-align:center;margin-bottom:6px}
+.doc-card h4{margin:0 0 4px;font-size:0.9rem}
+.doc-card .meta{font-size:0.78rem;color:#888;line-height:1.6}
+.type-badge{display:inline-block;padding:1px 8px;border-radius:8px;font-size:0.7rem;background:#e3f2fd;color:#1565c0}
+</style></head>
+<body>
+<header class="app-header no-print"><h1>📁 文档中心</h1><div class="subtitle">施工图纸 · 技术规范 · 项目资料 | <a href="/" style="color:white;">← 返回</a></div></header>
+<main class="main-content">
+<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <button class="btn btn-primary" onclick="openUploadModal()">📤 上传文档</button>
+    <select id="docFilter" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+        <option value="">全部类型</option>
+        <option value="drawing">📐 施工图纸</option>
+        <option value="specification">📋 技术规范</option>
+        <option value="report">📊 检测报告</option>
+        <option value="contract">📝 合同文件</option>
+        <option value="photo">📸 现场照片</option>
+        <option value="other">📦 其他</option>
+    </select>
+    <select id="projectFilter" style="padding:6px;border:1px solid #ddd;border-radius:6px;min-width:150px;"></select>
+</div>
+<div id="docList" class="doc-grid"><p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">加载中...</p></div>
+
+<div class="modal-overlay" id="uploadModal"><div class="modal">
+<h2>📤 上传文档</h2>
+<div class="form-row"><label>文档标题 *</label><input id="doc_title"></div>
+<div class="form-row"><label>文档类型</label><select id="doc_type">
+<option value="drawing">📐 施工图纸</option><option value="specification">📋 技术规范</option>
+<option value="report">📊 检测报告</option><option value="contract">📝 合同文件</option>
+<option value="photo">📸 现场照片</option><option value="other">📦 其他</option>
+</select></div>
+<div class="form-row"><label>所属项目</label><select id="doc_project"></select></div>
+<div class="form-row"><label>描述</label><input id="doc_desc"></div>
+<div class="form-row"><label>版本</label><input id="doc_version" value="v1.0"></div>
+<div class="form-row"><label>选择文件 *</label><input id="doc_file" type="file"></div>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+<button class="btn" onclick="closeModal('uploadModal')" style="background:#eee;">取消</button>
+<button class="btn btn-primary" onclick="uploadDoc()">📤 上传</button></div>
+</div></div>
+</main>
+<script>
+function loadProjects() {
+    fetch('/api/projects').then(r=>r.json()).then(ps => {
+        const sel = document.getElementById('projectFilter');
+        const sel2 = document.getElementById('doc_project');
+        sel.innerHTML = '<option value="0">所有项目</option>'+ps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+        sel2.innerHTML = ps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+        sel.onchange = loadDocuments;
+        loadDocuments();
+    });
+}
+
+function loadDocuments() {
+    const pid = document.getElementById('projectFilter').value;
+    const type = document.getElementById('docFilter').value;
+    let url = '/api/documents';
+    const params = [];
+    if(pid>0) params.push('project_id='+pid);
+    if(type) params.push('type='+type);
+    if(params.length) url += '?'+params.join('&');
+
+    fetch(url).then(r=>r.json()).then(docs => {
+        const div = document.getElementById('docList');
+        const typeIcons = {'drawing':'📐','specification':'📋','report':'📊','contract':'📝','photo':'📸','other':'📦'};
+        if(docs.length===0){div.innerHTML='<p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">暂无文档</p>';return;}
+        div.innerHTML = docs.map(d => `
+            <div class="doc-card">
+                <div class="icon">${typeIcons[d.doc_type]||'📦'}</div>
+                <h4>${d.title}</h4>
+                <div class="meta">
+                    <span class="type-badge">${d.doc_type}</span>
+                    <div>📎 ${d.filename}</div>
+                    <div>📦 ${(d.file_size/1024).toFixed(1)}KB | ${d.version||'v1.0'}</div>
+                    ${d.project_name ? '<div>📋 '+d.project_name+'</div>' : ''}
+                    <div>🕐 ${d.created_at}</div>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:6px;">
+                    <a href="/api/documents/${d.id}/download" class="btn" style="font-size:0.78rem;padding:4px 12px;background:#e3f2fd;color:#1565c0;text-decoration:none;">📥 下载</a>
+                    <button class="btn" onclick="deleteDoc(${d.id})" style="font-size:0.78rem;padding:4px 12px;background:#fce4ec;color:#c62828;">🗑️</button>
+                </div>
+            </div>
+        `).join('');
+    });
+}
+
+function openUploadModal() {
+    document.getElementById('doc_title').value='';
+    document.getElementById('doc_desc').value='';
+    document.getElementById('doc_version').value='v1.0';
+    document.getElementById('doc_file').value='';
+    document.getElementById('uploadModal').classList.add('active');
+}
+
+function uploadDoc() {
+    const file = document.getElementById('doc_file').files[0];
+    if(!file||!document.getElementById('doc_title').value.trim()) return showToast('⚠️ 请填写标题并选择文件','warning');
+    const form = new FormData();
+    form.append('project_id', document.getElementById('doc_project').value);
+    form.append('title', document.getElementById('doc_title').value.trim());
+    form.append('doc_type', document.getElementById('doc_type').value);
+    form.append('description', document.getElementById('doc_desc').value);
+    form.append('version', document.getElementById('doc_version').value);
+    form.append('file', file);
+    fetch('/api/documents',{method:'POST',body:form})
+    .then(r=>r.json()).then(d=>{if(d.status==='ok'){showToast('✅ 上传成功');closeModal('uploadModal');loadDocuments();}});
+}
+
+function deleteDoc(did) {if(!confirm('确定删除？'))return;fetch('/api/documents/'+did,{method:'DELETE'}).then(()=>{showToast('🗑️ 已删除');loadDocuments();});}
+function closeModal(id){document.getElementById(id).classList.remove('active');}
+document.querySelectorAll('.modal-overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('active');}));
+document.addEventListener('DOMContentLoaded', loadProjects);
+</script></body></html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>安全管理 - 永颐施工平台</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.safety-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:768px){.safety-layout{grid-template-columns:1fr}}
+.check-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:0.85rem}
+.incident-card{border:1px solid #e0e0e0;border-radius:10px;padding:14px;margin-bottom:10px}
+.sev-badge{padding:2px 10px;border-radius:10px;font-size:0.75rem;font-weight:600}
+.sev-轻微{background:#e8f5e9;color:#2e7d32}.sev-一般{background:#fff3e0;color:#e65100}.sev-严重{background:#fce4ec;color:#c62828}
+</style></head>
+<body>
+<header class="app-header no-print"><h1>🛡️ 安全管理</h1><div class="subtitle">安全检查 · 事故记录 · 隐患整改 | <a href="/" style="color:white;">← 返回</a></div></header>
+<main class="main-content">
+<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <button class="btn btn-primary" onclick="openCheckModal()">🔍 安全检查</button>
+    <button class="btn" onclick="openIncidentModal()" style="background:#fce4ec;color:#c62828;">🚨 记录事故</button>
+    <select id="projectFilter" style="padding:6px;border:1px solid #ddd;border-radius:6px;min-width:150px;margin-left:auto;"></select>
+</div>
+<div class="safety-layout">
+<div class="card"><h2>🔍 安全检查记录</h2><div id="checkList"><p style="color:#999;">请选择项目...</p></div></div>
+<div class="card"><h2>🚨 安全事故记录</h2><div id="incidentList"><p style="color:#999;">请选择项目...</p></div></div>
+</div></main>
+
+<div class="modal-overlay" id="checkModal"><div class="modal">
+<h2>🔍 安全检查</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>检查日期</label><input id="c_date" type="date"></div>
+<div class="form-row"><label>检查人</label><input id="c_inspector"></div></div>
+<div class="form-row"><label>检查类型</label><select id="c_type" onchange="loadCheckTemplate()">
+<option value="日常检查">日常检查</option><option value="专项检查">专项检查</option><option value="周检">周检</option>
+</select></div>
+<div id="checkItems" class="form-row"></div>
+<div class="form-row"><label>整改要求</label><textarea id="c_rectify" rows="2"></textarea></div>
+<div class="form-row"><label>备注</label><input id="c_notes"></div>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+<button class="btn" onclick="closeModal('checkModal')" style="background:#eee;">取消</button>
+<button class="btn btn-primary" onclick="saveCheck()">💾 保存</button></div>
+</div></div>
+
+<div class="modal-overlay" id="incidentModal"><div class="modal">
+<h2>🚨 记录安全事故</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>日期</label><input id="i_date" type="date"></div>
+<div class="form-row"><label>类型</label><select id="i_type"><option>工伤</option><option>设备事故</option><option>火灾</option><option>其他</option></select></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>严重程度</label><select id="i_sev"><option value="轻微">轻微</option><option value="一般">一般</option><option value="严重">严重</option></select></div>
+<div class="form-row"><label>受伤人员</label><input id="i_person"></div></div>
+<div class="form-row"><label>事故描述</label><textarea id="i_desc" rows="3"></textarea></div>
+<div class="form-row"><label>处理措施</label><textarea id="i_treat" rows="2"></textarea></div>
+<div class="form-row"><label>根本原因</label><input id="i_cause"></div>
+<div class="form-row"><label>预防措施</label><textarea id="i_prevent" rows="2"></textarea></div>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+<button class="btn" onclick="closeModal('incidentModal')" style="background:#eee;">取消</button>
+<button class="btn btn-primary" onclick="saveIncident()">💾 保存</button></div>
+</div></div>
+
+<script>
+let currentPid = 0;
+
+function loadProjects() {
+    fetch('/api/projects').then(r=>r.json()).then(ps => {
+        const sel = document.getElementById('projectFilter');
+        sel.innerHTML = '<option value="0">选择项目</option>'+ps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+        sel.onchange = function() { currentPid = parseInt(this.value); loadChecks(); loadIncidents(); };
+    });
+}
+
+function loadChecks() {
+    if(!currentPid){document.getElementById('checkList').innerHTML='<p style="color:#999;">请选择项目...</p>';return;}
+    fetch('/api/safety/checks?project_id='+currentPid).then(r=>r.json()).then(checks => {
+        const div = document.getElementById('checkList');
+        if(checks.length===0){div.innerHTML='<p style="color:#999;text-align:center;padding:20px;">暂无检查记录</p>';return;}
+        div.innerHTML = checks.map(c => `
+            <div class="incident-card" style="cursor:pointer;" onclick="showCheckDetail(${c.id})">
+                <div style="display:flex;justify-content:space-between;">
+                    <strong>📅 ${c.check_date} ${c.check_type}</strong>
+                    <span style="color:${c.result==='合格'?'#2e7d32':'#e65100'};">${c.result}</span>
+                </div>
+                <div style="font-size:0.82rem;color:#666;">👤 ${c.inspector||'-'} | ✅ ${c.passed_items}/${c.total_items}项通过</div>
+            </div>
+        `).join('');
+    });
+}
+
+function showCheckDetail(sid) {
+    fetch('/api/safety/checks/'+sid).then(r=>r.json()).then(c => {
+        let html = `<div style="font-size:0.85rem;margin-bottom:10px;"><strong>${c.check_date} ${c.check_type}</strong> | 👤 ${c.inspector} | 结果: ${c.result}</div>`;
+        html += '<h4 style="font-size:0.9rem;margin-bottom:6px;">检查项</h4>';
+        (c.items_list||[]).forEach(item => {
+            html += `<div class="check-item">${item.passed?'✅':'⭕'} ${item.item||item.name} ${item.standard?'<span style="color:#888;font-size:0.8rem;">| '+item.standard+'</span>':''}</div>`;
+        });
+        if(c.rectification) html += `<div style="margin-top:8px;font-size:0.85rem;color:#e65100;">🔧 整改: ${c.rectification}</div>`;
+        showModalHtml('检查详情', html);
+    });
+}
+
+function loadCheckTemplate() {
+    const type = document.getElementById('c_type').value;
+    fetch('/api/safety/templates').then(r=>r.json()).then(templates => {
+        const items = templates[type]||[];
+        const div = document.getElementById('checkItems');
+        div.innerHTML = '<label>检查项</label>'+items.map((item,i) => `
+            <div class="check-item">
+                <input type="checkbox" id="ci_${i}" checked>
+                <label for="ci_${i}">${item.item}</label>
+                <span style="color:#888;font-size:0.78rem;">${item.standard}</span>
+                <input type="hidden" class="ci_name" value="${item.item}">
+                <input type="hidden" class="ci_std" value="${item.standard}">
+            </div>
+        `).join('');
+    });
+}
+
+function openCheckModal() {
+    if(!currentPid) return showToast('⚠️ 请先选择项目','warning');
+    document.getElementById('c_date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('c_inspector').value = '';
+    document.getElementById('c_rectify').value = '';
+    document.getElementById('c_notes').value = '';
+    loadCheckTemplate();
+    document.getElementById('checkModal').classList.add('active');
+}
+
+function saveCheck() {
+    const items = [];
+    document.querySelectorAll('#checkItems .check-item').forEach(row => {
+        items.push({
+            item: row.querySelector('.ci_name')?.value || '',
+            standard: row.querySelector('.ci_std')?.value || '',
+            passed: row.querySelector('input[type=checkbox]')?.checked || false,
+        });
+    });
+    const passed = items.filter(i=>i.passed).length;
+    const result = passed === items.length ? '合格' : (passed > 0 ? '需整改' : '不合格');
+    const data = {
+        project_id: currentPid,
+        check_date: document.getElementById('c_date').value,
+        inspector: document.getElementById('c_inspector').value,
+        check_type: document.getElementById('c_type').value,
+        items: items,
+        result: result,
+        rectification: document.getElementById('c_rectify').value,
+        notes: document.getElementById('c_notes').value,
+    };
+    fetch('/api/safety/checks', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d=>{if(d.status==='ok'){showToast('✅ 已保存');closeModal('checkModal');loadChecks();}});
+}
+
+function loadIncidents() {
+    if(!currentPid){document.getElementById('incidentList').innerHTML='<p style="color:#999;">请选择项目...</p>';return;}
+    fetch('/api/safety/incidents?project_id='+currentPid).then(r=>r.json()).then(incidents => {
+        const div = document.getElementById('incidentList');
+        if(incidents.length===0){div.innerHTML='<p style="color:#999;text-align:center;padding:20px;">无事故记录</p>';return;}
+        div.innerHTML = incidents.map(i => `
+            <div class="incident-card">
+                <div style="display:flex;justify-content:space-between;align-items:start;">
+                    <div><strong>${i.incident_date}</strong> ${i.incident_type}</div>
+                    <span class="sev-badge sev-${i.severity}">${i.severity}</span>
+                </div>
+                <div style="font-size:0.85rem;color:#666;margin-top:4px;">${i.description||'-'}</div>
+                <div style="font-size:0.8rem;color:#888;margin-top:4px;">
+                    ${i.is_closed ? '✅ 已关闭' : '⏳ 处理中'}${i.treatment ? ' | 处理: '+i.treatment : ''}
+                </div>
+                <div style="margin-top:6px;display:flex;gap:6px;">
+                    ${i.is_closed ? '' : `<button class="btn" onclick="closeIncident(${i.id})" style="font-size:0.75rem;padding:3px 10px;background:#e8f5e9;color:#2e7d32;">✅ 关闭</button>`}
+                    <button class="btn" onclick="deleteIncident(${i.id})" style="font-size:0.75rem;padding:3px 10px;background:#fce4ec;color:#c62828;">🗑️</button>
+                </div>
+            </div>
+        `).join('');
+    });
+}
+
+function openIncidentModal() {
+    if(!currentPid) return showToast('⚠️ 请先选择项目','warning');
+    document.getElementById('i_date').value=new Date().toISOString().split('T')[0];
+    ['i_type','i_sev','i_person','i_desc','i_treat','i_cause','i_prevent'].forEach(id=>{const el=document.getElementById(id);if(el&&el.tagName!='SELECT')el.value='';});
+    document.getElementById('incidentModal').classList.add('active');
+}
+
+function saveIncident() {
+    const data = {
+        project_id: currentPid,
+        incident_date: document.getElementById('i_date').value,
+        incident_type: document.getElementById('i_type').value,
+        severity: document.getElementById('i_sev').value,
+        description: document.getElementById('i_desc').value,
+        injured_person: document.getElementById('i_person').value,
+        treatment: document.getElementById('i_treat').value,
+        root_cause: document.getElementById('i_cause').value,
+        preventive_measures: document.getElementById('i_prevent').value,
+    };
+    fetch('/api/safety/incidents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d=>{if(d.status==='ok'){showToast('✅ 已记录');closeModal('incidentModal');loadIncidents();}});
+}
+
+function closeIncident(iid) {
+    fetch('/api/safety/incidents/'+iid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({is_closed:1,closed_date:new Date().toISOString().split('T')[0]})})
+    .then(r=>r.json()).then(()=>{showToast('✅ 已关闭');loadIncidents();});
+}
+
+function deleteIncident(iid) {if(!confirm('确定删除？'))return;fetch('/api/safety/incidents/'+iid,{method:'DELETE'}).then(()=>{showToast('🗑️ 已删除');loadIncidents();});}
+
+function showModalHtml(title,html){
+    const div=document.createElement('div');div.className='modal-overlay active';div.style.display='flex';
+    div.innerHTML=`<div class="modal"><h2>${title}</h2>${html}<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;"><button class="btn" onclick="this.closest('.modal-overlay').remove()" style="background:#eee;">关闭</button></div></div>`;
+    document.body.appendChild(div);
+    div.addEventListener('click',e=>{if(e.target===div)div.remove();});
+}
+
+function closeModal(id){document.getElementById(id).classList.remove('active');}
+document.querySelectorAll('.modal-overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('active');}));
+document.addEventListener('DOMContentLoaded', loadProjects);
+</script></body></html>
