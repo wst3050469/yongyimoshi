@@ -23,3 +23,6 @@ Thumbs.db
 
 # Project
 *.bak
+data/photos/*
+data/backups/*
+logs/*

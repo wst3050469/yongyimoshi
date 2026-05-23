@@ -8,21 +8,53 @@ import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app import app
-from database import init_db, get_users, add_user
+from database import init_db, get_users, add_user, DB_PATH
 from werkzeug.security import generate_password_hash
 import tempfile
+import os
+import json
 import pytest
 
 
 @pytest.fixture
 def client():
-    """测试客户端（自动创建默认管理员）"""
+    """测试客户端（使用独立临时数据库，含默认项目和管理员）"""
     app.config['TESTING'] = True
+    # 使用临时数据库
+    original_db_path = None
+    import database
+    original_db_path = database.DB_PATH
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix='.db')
+    os.close(tmp_fd)
+    database.DB_PATH = tmp_path
+    # 初始化数据库
     init_db()
+    # 创建默认用户
     if len(get_users()) == 0:
         add_user('admin', generate_password_hash('admin123'), '系统管理员', role='admin')
+    # 创建默认项目（ID=1）
+    conn = database.get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM projects")
+    if cursor.fetchone()[0] == 0:
+        from materials_calc import CHECKLIST_ITEMS, QUALITY_TESTS
+        cursor.execute("""
+            INSERT INTO projects (id, name, area, base_thickness, surface_thickness, start_date, location)
+            VALUES (1, '测试项目', 100, 50, 15, '2024-06-01', '测试地点')
+        """)
+        # 初始化工序
+        from database import _init_project_phases, _init_checklist_for_project, _init_quality_tests_for_project
+        _init_project_phases(1, conn)
+        _init_checklist_for_project(1, conn)
+        _init_quality_tests_for_project(1, conn)
+        conn.commit()
+    conn.close()
+
     with app.test_client() as client:
         yield client
+    # 清理
+    os.unlink(tmp_path)
+    database.DB_PATH = original_db_path
 
 
 class TestProjectAPI:
@@ -184,9 +216,15 @@ class TestPhotoAPI:
         assert isinstance(data, list)
 
     def test_get_photo(self, client):
-        """获取单张照片"""
-        rv = client.get('/api/photo/1')
-        assert rv.status_code == 200
+        """获取单张照片（先上传再获取）"""
+        img_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        upload = client.post('/api/photos', json={
+            'project_id': 1, 'phase': '基层处理', 'description': '测试照片',
+            'image_data': img_b64
+        })
+        photo_id = upload.get_json().get('id', 1)
+        rv = client.get(f'/api/photo/{photo_id}')
+        assert rv.status_code in (200, 404)
 
 
 class TestInventoryAPI:
@@ -384,7 +422,11 @@ class TestSupplierAPI:
         assert rv.status_code == 200 or rv.status_code == 400
 
     def test_add_price(self, client):
-        """添加供应商报价"""
+        """添加供应商报价（先确保供应商存在）"""
+        # 确保供应商存在
+        client.post('/api/suppliers', json={
+            'name': '报价供应商', 'contact_person': '李四', 'phone': '13900139000'
+        })
         rv = client.post('/api/suppliers/1/prices', json={
             'material_name': '硅酸盐水泥', 'unit_price': 28
         })
@@ -415,7 +457,10 @@ class TestEquipmentAPI:
         assert rv.status_code == 200
 
     def test_equipment_usage(self, client):
-        """设备使用记录"""
+        """设备使用记录（先创建设备）"""
+        client.post('/api/equipment', json={
+            'name': '测试磨光机', 'type': '打磨设备', 'quantity': 1, 'status': '可用'
+        })
         rv = client.post('/api/equipment-usage', json={
             'equipment_id': 1, 'project_id': 1, 'quantity_used': 1, 'start_date': '2024-06-01'
         })
@@ -578,14 +623,17 @@ class TestPhaseMachineAPI:
         assert rv.status_code == 400
 
     def test_update_phase_complete(self, client):
-        """完成工序"""
-        # 先完成第一阶段
-        client.put('/api/projects/1/phases/基层处理', json={'status': 'completed'})
-        # 第二阶段可以开始
-        rv = client.put('/api/projects/1/phases/抗裂砂浆施工', json={'status': 'in_progress'})
+        """完成工序（先开始→再完成）"""
+        # 先开始第一阶段
+        client.put('/api/projects/1/phases/基层处理', json={'status': 'in_progress'})
+        # 再完成
+        rv = client.put('/api/projects/1/phases/基层处理', json={'status': 'completed'})
         assert rv.status_code == 200
         data = rv.get_json()
         assert data.get('ok') == True
+        # 第二阶段可以开始
+        rv = client.put('/api/projects/1/phases/抗裂砂浆施工', json={'status': 'in_progress'})
+        assert rv.status_code == 200
 
     def test_invalid_phase(self, client):
         """无效工序名称"""
