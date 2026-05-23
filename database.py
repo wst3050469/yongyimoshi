@@ -295,6 +295,45 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS material_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            request_date TEXT NOT NULL,
+            applicant TEXT DEFAULT '',
+            status TEXT DEFAULT '待审批',
+            approver TEXT DEFAULT '',
+            approved_date TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS request_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL,
+            material_name TEXT NOT NULL,
+            quantity_kg REAL DEFAULT 0,
+            unit TEXT DEFAULT 'kg',
+            purpose TEXT DEFAULT '',
+            FOREIGN KEY (request_id) REFERENCES material_requests(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS subcontractors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            contact_person TEXT DEFAULT '',
+            phone TEXT DEFAULT '',
+            scope TEXT DEFAULT '',
+            contract_amount REAL DEFAULT 0,
+            contract_date TEXT DEFAULT '',
+            start_date TEXT DEFAULT '',
+            end_date TEXT DEFAULT '',
+            status TEXT DEFAULT '进行中',
+            rating INTEGER DEFAULT 3,
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     """)
 
     conn.commit()
@@ -1767,6 +1806,251 @@ def delete_document(did: int) -> bool:
 
 
 # ============================================================
+# 材料申购管理
+# ============================================================
+
+def add_material_request(project_id: int, applicant: str = "",
+                         request_date: str = "", notes: str = "",
+                         items: list = None) -> int:
+    """创建材料申购单"""
+    if not request_date:
+        request_date = datetime.now().strftime("%Y-%m-%d")
+    if items is None:
+        items = []
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO material_requests (project_id, request_date, applicant, notes)
+        VALUES (?, ?, ?, ?)
+    """, (project_id, request_date, applicant, notes))
+    rid = cursor.lastrowid
+    for item in items:
+        cursor.execute("""
+            INSERT INTO request_items (request_id, material_name, quantity_kg, unit, purpose)
+            VALUES (?, ?, ?, ?, ?)
+        """, (rid, item.get('material_name', ''), float(item.get('quantity_kg', 0)),
+              item.get('unit', 'kg'), item.get('purpose', '')))
+    conn.commit()
+    conn.close()
+    return rid
+
+
+def get_material_requests(project_id: int = 0) -> List[Dict]:
+    """获取材料申购单"""
+    conn = get_db()
+    cursor = conn.cursor()
+    if project_id:
+        rows = cursor.execute("""
+            SELECT r.*, p.name as project_name,
+                (SELECT COUNT(*) FROM request_items WHERE request_id = r.id) as item_count
+            FROM material_requests r
+            JOIN projects p ON r.project_id = p.id
+            WHERE r.project_id = ?
+            ORDER BY r.created_at DESC
+        """, (project_id,)).fetchall()
+    else:
+        rows = cursor.execute("""
+            SELECT r.*, p.name as project_name,
+                (SELECT COUNT(*) FROM request_items WHERE request_id = r.id) as item_count
+            FROM material_requests r
+            JOIN projects p ON r.project_id = p.id
+            ORDER BY r.created_at DESC LIMIT 100
+        """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_material_request(rid: int) -> Optional[Dict]:
+    """获取申购单详情（含明细）"""
+    conn = get_db()
+    cursor = conn.cursor()
+    row = cursor.execute("""
+        SELECT r.*, p.name as project_name FROM material_requests r
+        JOIN projects p ON r.project_id = p.id WHERE r.id = ?
+    """, (rid,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    req = dict(row)
+    items = cursor.execute("""
+        SELECT * FROM request_items WHERE request_id = ? ORDER BY id
+    """, (rid,)).fetchall()
+    req['items'] = [dict(r) for r in items]
+    conn.close()
+    return req
+
+
+def update_material_request(rid: int, **kwargs) -> bool:
+    """更新申购单状态"""
+    allowed = ['status', 'approver', 'approved_date', 'notes']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [rid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE material_requests SET {set_clause} WHERE id = ?", values)
+    # 如果批准，自动创建通知
+    if updates.get('status') == '已批准':
+        req = cursor.execute(
+            "SELECT project_id FROM material_requests WHERE id = ?", (rid,)
+        ).fetchone()
+        if req:
+            cursor.execute("""
+                INSERT INTO notifications (project_id, type, title, message)
+                VALUES (?, ?, ?, ?)
+            """, (req['project_id'], 'material_approved',
+                  '✅ 材料申购已批准',
+                  f'申购单 #{rid} 已获批准，请安排采购。'))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_material_request(rid: int) -> bool:
+    """删除申购单"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM request_items WHERE request_id = ?", (rid,))
+    cursor.execute("DELETE FROM material_requests WHERE id = ?", (rid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# 分包商管理
+# ============================================================
+
+def add_subcontractor(name: str, contact_person: str = "", phone: str = "",
+                      scope: str = "", contract_amount: float = 0,
+                      contract_date: str = "", start_date: str = "",
+                      end_date: str = "", status: str = "进行中",
+                      rating: int = 3, notes: str = "") -> int:
+    """添加分包商"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO subcontractors (name, contact_person, phone, scope,
+            contract_amount, contract_date, start_date, end_date, status, rating, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, contact_person, phone, scope, contract_amount,
+          contract_date, start_date, end_date, status, rating, notes))
+    sid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return sid
+
+
+def get_subcontractors() -> List[Dict]:
+    """获取所有分包商"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM subcontractors ORDER BY status, name
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_subcontractor(sid: int, **kwargs) -> bool:
+    """更新分包商"""
+    allowed = ['name', 'contact_person', 'phone', 'scope', 'contract_amount',
+               'contract_date', 'start_date', 'end_date', 'status', 'rating', 'notes']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [sid]
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE subcontractors SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_subcontractor(sid: int) -> bool:
+    """删除分包商"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM subcontractors WHERE id = ?", (sid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# 项目分析看板
+# ============================================================
+
+def get_analytics() -> Dict:
+    """跨项目分析数据"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 项目统计
+    total_projects = cursor.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+    active_projects = cursor.execute("SELECT COUNT(*) FROM projects WHERE status='进行中'").fetchone()[0]
+    completed_projects = cursor.execute("SELECT COUNT(*) FROM projects WHERE status='已完成'").fetchone()[0]
+
+    total_area = cursor.execute("SELECT COALESCE(SUM(area),0) FROM projects").fetchone()[0]
+
+    # 检查清单总体进度
+    checklist = cursor.execute("""
+        SELECT COUNT(*) as total, SUM(CASE WHEN is_checked=1 THEN 1 ELSE 0 END) as checked
+        FROM checklist_state
+    """).fetchone()
+    check_total = checklist['total'] or 0
+    check_done = checklist['checked'] or 0
+
+    # 材料总用量
+    total_material_kg = cursor.execute("""
+        SELECT COALESCE(SUM(quantity_kg),0) FROM material_records
+    """).fetchone()[0]
+
+    # 总预算
+    budget = cursor.execute("""
+        SELECT COALESCE(SUM(planned_amount),0) as planned,
+               COALESCE(SUM(actual_amount),0) as actual
+        FROM budget_items
+    """).fetchone()
+
+    # 总工时
+    total_hours = cursor.execute("""
+        SELECT COALESCE(SUM(hours),0) FROM work_hours
+    """).fetchone()[0]
+
+    # 最近施工日志
+    recent_logs = [dict(r) for r in cursor.execute("""
+        SELECT ld.*, p.name as project_name FROM daily_logs ld
+        JOIN projects p ON ld.project_id = p.id
+        ORDER BY ld.created_at DESC LIMIT 10
+    """).fetchall()]
+
+    # 待审批申购
+    pending_requests = cursor.execute("""
+        SELECT COUNT(*) FROM material_requests WHERE status='待审批'
+    """).fetchone()[0]
+
+    conn.close()
+
+    return {
+        "projects": {"total": total_projects, "active": active_projects,
+                      "completed": completed_projects, "total_area_m2": total_area},
+        "checklist": {"total": check_total, "completed": check_done,
+                       "progress": round(check_done/check_total*100,1) if check_total > 0 else 0},
+        "materials": {"total_kg": total_material_kg},
+        "budget": {"planned": round(budget['planned'],2),
+                   "actual": round(budget['actual'],2)},
+        "labor": {"total_hours": round(total_hours,1)},
+        "pending_requests": pending_requests,
+        "recent_logs": recent_logs,
+    }
+
+
+# ============================================================
 # CSV/Excel 导出
 # ============================================================
 
@@ -2222,6 +2506,10 @@ def optimize_database():
         "CREATE INDEX IF NOT EXISTS idx_safety_incident_project ON safety_incidents(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type)",
+        "CREATE INDEX IF NOT EXISTS idx_mat_req_project ON material_requests(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_mat_req_status ON material_requests(status)",
+        "CREATE INDEX IF NOT EXISTS idx_req_items_request ON request_items(request_id)",
+        "CREATE INDEX IF NOT EXISTS idx_subcontractors_status ON subcontractors(status)",
     ]
     for idx in indexes:
         cursor.execute(idx)
@@ -2245,7 +2533,8 @@ def get_db_stats() -> Dict:
               "curing_records", "workers", "teams", "work_hours",
               "budget_items", "notifications", "equipment", "equipment_usage",
               "acceptance_records", "acceptance_items",
-              "safety_checks", "safety_incidents", "documents"]
+              "safety_checks", "safety_incidents", "documents",
+              "material_requests", "request_items", "subcontractors"]
     for table in tables:
         count = cursor.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         stats[table] = count

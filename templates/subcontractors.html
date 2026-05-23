@@ -1,0 +1,119 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>分包商管理 - 永颐施工平台</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.sub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.sub-card{border:1px solid #e0e0e0;border-radius:10px;padding:14px;background:#fff}
+.sub-card h3{margin:0 0 6px;font-size:1rem}
+.sub-card .info{font-size:0.82rem;color:#666;line-height:1.6}
+.stars{color:#f59e0b;letter-spacing:2px}
+</style></head>
+<body>
+<header class="app-header no-print"><h1>🤝 分包商管理</h1><div class="subtitle">分包团队 · 合同管理 · 绩效评估 | <a href="/" style="color:white;">← 返回</a></div></header>
+<main class="main-content">
+<div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <h2 style="margin:0;">分包商名录 <span id="subCount" style="font-weight:400;font-size:0.9rem;color:#888;"></span></h2>
+    <button class="btn btn-primary" onclick="openAddModal()">➕ 新增分包商</button>
+</div>
+<div id="subList" class="sub-grid"><p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">加载中...</p></div>
+
+<div class="modal-overlay" id="subModal"><div class="modal">
+<h2 id="modalTitle">➕ 新增分包商</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>名称 *</label><input id="s_name"></div>
+<div class="form-row"><label>联系人</label><input id="s_contact"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>电话</label><input id="s_phone"></div>
+<div class="form-row"><label>施工范围</label><input id="s_scope"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>合同金额(元)</label><input id="s_amount" type="number"></div>
+<div class="form-row"><label>合同日期</label><input id="s_cdate" type="date"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>开始日期</label><input id="s_sdate" type="date"></div>
+<div class="form-row"><label>结束日期</label><input id="s_edate" type="date"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>状态</label><select id="s_status"><option>进行中</option><option>已完成</option><option>已终止</option></select></div>
+<div class="form-row"><label>评分</label><select id="s_rating"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3" selected>⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div></div>
+<div class="form-row"><label>备注</label><input id="s_notes"></div>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+<button class="btn" onclick="closeModal('subModal')" style="background:#eee;">取消</button>
+<button class="btn btn-primary" onclick="saveSub()">💾 保存</button></div>
+</div></div>
+</main>
+<script>
+let editingId = null;
+function loadSubs() {
+    fetch('/api/subcontractors').then(r=>r.json()).then(list => {
+        document.getElementById('subCount').textContent = `(共${list.length}家)`;
+        const div = document.getElementById('subList');
+        if(list.length===0){div.innerHTML='<p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">暂无分包商</p>';return;}
+        div.innerHTML = list.map(s => {
+            const st = '★'.repeat(s.rating)+'☆'.repeat(5-s.rating);
+            const statusColors = {'进行中':'#2980b9','已完成':'#27ae60','已终止':'#e74c3c'};
+            return `<div class="sub-card">
+                <div style="display:flex;justify-content:space-between;"><h3>${s.name}</h3><span class="stars">${st}</span></div>
+                <div class="info">
+                    <div>👤 ${s.contact_person||'-'} | 📞 ${s.phone||'-'}</div>
+                    <div>🔨 ${s.scope||'未指定'}</div>
+                    <div>💰 ¥${(s.contract_amount||0).toFixed(0)} | 📅 ${s.contract_date||'-'}</div>
+                    <div>📆 ${s.start_date||'-'} ~ ${s.end_date||'-'}</div>
+                    <div style="margin-top:4px;"><span style="color:${statusColors[s.status]||'#888'};font-weight:600;">● ${s.status}</span></div>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:6px;">
+                    <button class="btn" onclick="editSub(${s.id})" style="font-size:0.8rem;padding:4px 12px;background:#e3f2fd;">✏️</button>
+                    <button class="btn" onclick="deleteSub(${s.id})" style="font-size:0.8rem;padding:4px 12px;background:#fce4ec;color:#c62828;">🗑️</button>
+                </div>
+            </div>`;
+        }).join('');
+    });
+}
+function openAddModal(){
+    editingId=null;document.getElementById('modalTitle').textContent='➕ 新增分包商';
+    ['s_name','s_contact','s_phone','s_scope','s_notes','s_amount','s_cdate','s_sdate','s_edate'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('s_status').value='进行中';document.getElementById('s_rating').value='3';
+    document.getElementById('subModal').classList.add('active');
+}
+function saveSub(){
+    const data = {
+        name: document.getElementById('s_name').value.trim(),
+        contact_person: document.getElementById('s_contact').value.trim(),
+        phone: document.getElementById('s_phone').value.trim(),
+        scope: document.getElementById('s_scope').value.trim(),
+        contract_amount: parseFloat(document.getElementById('s_amount').value)||0,
+        contract_date: document.getElementById('s_cdate').value,
+        start_date: document.getElementById('s_sdate').value,
+        end_date: document.getElementById('s_edate').value,
+        status: document.getElementById('s_status').value,
+        rating: parseInt(document.getElementById('s_rating').value),
+        notes: document.getElementById('s_notes').value.trim(),
+    };
+    if(!data.name) return showToast('⚠️ 名称不能为空','warning');
+    const url = editingId ? `/api/subcontractors/${editingId}` : '/api/subcontractors';
+    const method = editingId ? 'PUT' : 'POST';
+    fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d=>{if(d.status==='ok'){showToast(editingId?'✅ 已更新':'✅ 已添加');closeModal('subModal');loadSubs();}});
+}
+function editSub(sid){
+    fetch('/api/subcontractors').then(r=>r.json()).then(list=>{
+        const s = list.find(x=>x.id===sid); if(!s) return;
+        editingId=s.id;document.getElementById('modalTitle').textContent='✏️ 编辑分包商';
+        document.getElementById('s_name').value=s.name||'';
+        document.getElementById('s_contact').value=s.contact_person||'';
+        document.getElementById('s_phone').value=s.phone||'';
+        document.getElementById('s_scope').value=s.scope||'';
+        document.getElementById('s_amount').value=s.contract_amount||0;
+        document.getElementById('s_cdate').value=s.contract_date||'';
+        document.getElementById('s_sdate').value=s.start_date||'';
+        document.getElementById('s_edate').value=s.end_date||'';
+        document.getElementById('s_status').value=s.status||'进行中';
+        document.getElementById('s_rating').value=s.rating||3;
+        document.getElementById('s_notes').value=s.notes||'';
+        document.getElementById('subModal').classList.add('active');
+    });
+}
+function deleteSub(sid){if(!confirm('确定删除？'))return;fetch('/api/subcontractors/'+sid,{method:'DELETE'}).then(()=>{showToast('🗑️ 已删除');loadSubs();});}
+function closeModal(id){document.getElementById(id).classList.remove('active');}
+document.querySelectorAll('.modal-overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('active');}));
+document.addEventListener('DOMContentLoaded', loadSubs);
+</script></body></html>

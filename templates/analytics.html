@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>数据看板 - 永颐施工平台</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.kpi-card{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;text-align:center}
+.kpi-card .num{font-size:1.8rem;font-weight:700;color:#1a5276}
+.kpi-card .label{font-size:0.78rem;color:#888;margin-top:4px}
+.chart-bar{height:20px;background:#e8e8e8;border-radius:10px;overflow:hidden;margin:4px 0}
+.chart-bar .fill{height:100%;background:linear-gradient(90deg,#2980b9,#1a5276);border-radius:10px;transition:width 1s}
+</style>
+</head>
+<body>
+<header class="app-header no-print"><h1>📊 数据看板</h1><div class="subtitle">项目总览 · KPI指标 · 全局进度 | <a href="/" style="color:white;">← 返回</a></div></header>
+<main class="main-content">
+<div class="card"><h2>🏗️ 项目总览</h2>
+<div class="kpi-grid" id="projectKpis"><div class="kpi-card"><div class="num">-</div><div class="label">加载中...</div></div></div></div>
+
+<div class="card"><h2>✅ 检查清单总体进度</h2>
+<div id="checklistProgress"><p style="color:#999;">加载中...</p></div></div>
+
+<div class="card"><h2>📋 最近施工日志</h2>
+<div id="recentLogs"><p style="color:#999;">加载中...</p></div></div>
+</main>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/analytics').then(r=>r.json()).then(d => {
+        // KPI
+        document.getElementById('projectKpis').innerHTML = `
+            <div class="kpi-card"><div class="num">${d.projects.total}</div><div class="label">总项目</div></div>
+            <div class="kpi-card"><div class="num" style="color:#2980b9;">${d.projects.active}</div><div class="label">进行中</div></div>
+            <div class="kpi-card"><div class="num" style="color:#27ae60;">${d.projects.completed}</div><div class="label">已完成</div></div>
+            <div class="kpi-card"><div class="num">${d.projects.total_area_m2.toFixed(0)}</div><div class="label">总面积(m²)</div></div>
+            <div class="kpi-card"><div class="num">${(d.materials.total_kg/1000).toFixed(1)}t</div><div class="label">材料用量</div></div>
+            <div class="kpi-card"><div class="num">¥${(d.budget.planned/10000).toFixed(1)}w</div><div class="label">总预算</div></div>
+            <div class="kpi-card"><div class="num">¥${(d.budget.actual/10000).toFixed(1)}w</div><div class="label">实际支出</div></div>
+            <div class="kpi-card"><div class="num">${d.labor.total_hours.toFixed(0)}</div><div class="label">总工时(h)</div></div>
+            <div class="kpi-card"><div class="num" style="color:#e67e22;">${d.pending_requests}</div><div class="label">待审批申购</div></div>
+        `;
+
+        // Checklist progress
+        const pct = d.checklist.progress;
+        document.getElementById('checklistProgress').innerHTML = `
+            <div style="display:flex;justify-content:space-between;font-size:0.9rem;">
+                <span>${d.checklist.completed}/${d.checklist.total} 项</span><span>${pct}%</span>
+            </div>
+            <div class="chart-bar"><div class="fill" style="width:${pct}%;"></div></div>
+        `;
+
+        // Recent logs
+        const logs = d.recent_logs;
+        const logDiv = document.getElementById('recentLogs');
+        if(logs.length===0){logDiv.innerHTML='<p style="color:#999;">暂无施工日志</p>';return;}
+        logDiv.innerHTML = '<table class="result-table"><thead><tr><th>项目</th><th>日期</th><th>天气</th><th>内容</th></tr></thead><tbody>'+
+            logs.map(l => `<tr><td>${l.project_name}</td><td>${l.log_date}</td><td>${l.weather||'-'}</td><td>${(l.work_content||'-').slice(0,30)}</td></tr>`).join('')+
+            '</tbody></table>';
+    });
+});
+</script></body></html>

@@ -1341,6 +1341,109 @@ def api_calendar():
 
 
 # ============================================================
+# 材料申购
+# ============================================================
+
+from database import (
+    add_material_request, get_material_requests, get_material_request,
+    update_material_request, delete_material_request,
+    add_subcontractor, get_subcontractors, update_subcontractor,
+    delete_subcontractor, get_analytics,
+)
+
+
+@app.route('/purchase-requests')
+def purchase_requests_page():
+    return render_template('purchase_requests.html')
+
+
+@app.route('/subcontractors')
+def subcontractors_page():
+    return render_template('subcontractors.html')
+
+
+@app.route('/analytics')
+def analytics_page():
+    return render_template('analytics.html')
+
+
+@app.route('/api/material-requests', methods=['GET'])
+def api_material_requests_list():
+    pid = request.args.get('project_id', 0, type=int)
+    return jsonify(get_material_requests(pid))
+
+
+@app.route('/api/material-requests', methods=['POST'])
+def api_material_requests_add():
+    data = request.get_json()
+    if not data or not data.get('project_id'):
+        return api_error("缺少 project_id")
+    rid = add_material_request(
+        project_id=int(data['project_id']),
+        applicant=data.get('applicant', ''),
+        request_date=data.get('request_date', ''),
+        notes=data.get('notes', ''),
+        items=data.get('items', []),
+    )
+    return jsonify({"status": "ok", "id": rid})
+
+
+@app.route('/api/material-requests/<int:rid>', methods=['GET'])
+def api_material_requests_get(rid):
+    req = get_material_request(rid)
+    if not req:
+        return api_error("申购单不存在")
+    return jsonify(req)
+
+
+@app.route('/api/material-requests/<int:rid>', methods=['PUT'])
+def api_material_requests_update(rid):
+    data = request.get_json() or {}
+    ok = update_material_request(rid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/material-requests/<int:rid>', methods=['DELETE'])
+def api_material_requests_delete(rid):
+    delete_material_request(rid)
+    return jsonify({"status": "ok"})
+
+
+# 分包商
+@app.route('/api/subcontractors', methods=['GET'])
+def api_subcontractors_list():
+    return jsonify(get_subcontractors())
+
+
+@app.route('/api/subcontractors', methods=['POST'])
+def api_subcontractors_add():
+    data = request.get_json()
+    if not data or not data.get('name'):
+        return api_error("分包商名称不能为空")
+    sid = add_subcontractor(**data)
+    return jsonify({"status": "ok", "id": sid})
+
+
+@app.route('/api/subcontractors/<int:sid>', methods=['PUT'])
+def api_subcontractors_update(sid):
+    data = request.get_json() or {}
+    ok = update_subcontractor(sid, **data)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route('/api/subcontractors/<int:sid>', methods=['DELETE'])
+def api_subcontractors_delete(sid):
+    delete_subcontractor(sid)
+    return jsonify({"status": "ok"})
+
+
+# 分析看板
+@app.route('/api/analytics')
+def api_analytics():
+    return jsonify(get_analytics())
+
+
+# ============================================================
 # 错误处理器
 # ============================================================
 

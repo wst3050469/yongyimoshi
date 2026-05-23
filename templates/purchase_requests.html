@@ -1,0 +1,144 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>材料申购 - 永颐施工平台</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.request-card{border:1px solid #e0e0e0;border-radius:10px;padding:14px;margin-bottom:10px;background:#fff}
+.status-badge{padding:2px 12px;border-radius:10px;font-size:0.75rem;font-weight:600}
+.status-待审批{background:#fff3e0;color:#e65100}.status-已批准{background:#e8f5e9;color:#2e7d32}
+.status-已拒绝{background:#fce4ec;color:#c62828}.status-已采购{background:#e3f2fd;color:#1565c0}
+</style></head>
+<body>
+<header class="app-header no-print"><h1>📦 材料申购</h1><div class="subtitle">申购单 · 审批流程 · 采购跟踪 | <a href="/" style="color:white;">← 返回</a></div></header>
+<main class="main-content">
+<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <button class="btn btn-primary" onclick="openAddModal()">➕ 新建申购</button>
+    <select id="projectFilter" style="padding:6px;border:1px solid #ddd;border-radius:6px;min-width:150px;"></select>
+    <span id="reqCount" style="font-size:0.85rem;color:#888;"></span>
+</div>
+<div id="reqList"></div>
+
+<div class="modal-overlay" id="reqModal"><div class="modal">
+<h2>📦 新建材料申购</h2>
+<div class="form-row"><label>申请项目</label><select id="r_project"></select></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div class="form-row"><label>申请日期</label><input id="r_date" type="date"></div>
+<div class="form-row"><label>申请人</label><input id="r_applicant"></div></div>
+<div class="form-row"><label>申请明细</label></div>
+<div id="r_items">
+    <div class="item-row" style="display:flex;gap:6px;margin-bottom:6px;">
+        <input placeholder="材料名称" class="r_name" style="flex:2;padding:6px;border:1px solid #ddd;border-radius:4px;">
+        <input type="number" placeholder="数量(kg)" class="r_qty" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:4px;">
+        <input placeholder="用途" class="r_purpose" style="flex:2;padding:6px;border:1px solid #ddd;border-radius:4px;">
+        <button onclick="this.parentElement.remove()" style="background:none;border:none;color:#e74c3c;cursor:pointer;">✕</button>
+    </div>
+</div>
+<button class="btn" onclick="addItemRow()" style="font-size:0.8rem;">➕ 添加材料行</button>
+<div class="form-row" style="margin-top:8px;"><label>备注</label><input id="r_notes"></div>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+<button class="btn" onclick="closeModal('reqModal')" style="background:#eee;">取消</button>
+<button class="btn btn-primary" onclick="saveRequest()">💾 提交申购</button></div>
+</div></div>
+
+<div class="modal-overlay" id="detailModal"><div class="modal">
+<h2>申购详情</h2><div id="detailContent"></div>
+<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+<button class="btn" onclick="closeModal('detailModal')" style="background:#eee;">关闭</button></div>
+</div></div>
+
+<script>
+let currentPid = 0;
+function init() {
+    fetch('/api/projects').then(r=>r.json()).then(ps => {
+        const sel = document.getElementById('projectFilter');
+        const sel2 = document.getElementById('r_project');
+        const opts = '<option value="0">所有项目</option>'+ps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+        sel.innerHTML = opts; sel2.innerHTML = ps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+        sel.onchange = function(){currentPid=parseInt(this.value);loadReqs();};
+        loadReqs();
+    });
+    document.getElementById('r_date').value = new Date().toISOString().split('T')[0];
+}
+function loadReqs() {
+    const url = currentPid ? '/api/material-requests?project_id='+currentPid : '/api/material-requests';
+    fetch(url).then(r=>r.json()).then(rows => {
+        document.getElementById('reqCount').textContent = `(共${rows.length}条)`;
+        const div = document.getElementById('reqList');
+        if(rows.length===0){div.innerHTML='<p style="text-align:center;padding:40px;color:#999;">暂无申购单</p>';return;}
+        div.innerHTML = rows.map(r => `
+            <div class="request-card" onclick="showDetail(${r.id})" style="cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;">
+                    <strong>📦 #${r.id} ${r.project_name}</strong>
+                    <span class="status-badge status-${r.status}">${r.status}</span>
+                </div>
+                <div style="font-size:0.82rem;color:#666;margin-top:4px;">
+                    📅 ${r.request_date} | 👤 ${r.applicant||'未填写'} | 📋 ${r.item_count||0}项材料
+                    ${r.approver ? ' | ✅ '+r.approver : ''}
+                </div>
+            </div>
+        `).join('');
+    });
+}
+function showDetail(rid) {
+    fetch('/api/material-requests/'+rid).then(r=>r.json()).then(req => {
+        let html = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.85rem;margin-bottom:12px;">
+                <div><strong>项目:</strong> ${req.project_name}</div>
+                <div><strong>日期:</strong> ${req.request_date}</div>
+                <div><strong>申请人:</strong> ${req.applicant||'-'}</div>
+                <div><strong>状态:</strong> <span class="status-badge status-${req.status}">${req.status}</span></div>
+                ${req.approver ? '<div><strong>审批人:</strong> '+req.approver+'</div>' : ''}
+            </div>
+            <h4 style="font-size:0.9rem;">材料清单</h4>
+            <table class="result-table"><thead><tr><th>材料</th><th>数量</th><th>单位</th><th>用途</th></tr></thead><tbody>
+                ${(req.items||[]).map(i => `<tr><td>${i.material_name}</td><td>${i.quantity_kg}</td><td>${i.unit||'kg'}</td><td>${i.purpose||'-'}</td></tr>`).join('')}
+            </tbody></table>
+            ${req.notes ? '<div style="margin-top:8px;font-size:0.85rem;color:#888;">📝 '+req.notes+'</div>' : ''}
+            <div style="margin-top:12px;display:flex;gap:8px;">
+                ${req.status === '待审批' ? `
+                    <button class="btn btn-success" onclick="approveReq(${req.id})">✅ 批准</button>
+                    <button class="btn" onclick="rejectReq(${req.id})" style="background:#fce4ec;color:#c62828;">❌ 拒绝</button>
+                ` : ''}
+                <button class="btn" onclick="deleteReq(${req.id})" style="background:#fce4ec;color:#c62828;">🗑️ 删除</button>
+            </div>
+        `;
+        document.getElementById('detailContent').innerHTML = html;
+        document.getElementById('detailModal').classList.add('active');
+    });
+}
+function openAddModal() {
+    document.getElementById('r_applicant').value='';
+    document.getElementById('r_notes').value='';
+    document.getElementById('r_items').innerHTML = '';
+    addItemRow();
+    document.getElementById('reqModal').classList.add('active');
+}
+function addItemRow() {
+    const div = document.createElement('div'); div.className='item-row';
+    div.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;';
+    div.innerHTML = '<input placeholder="材料名称" class="r_name" style="flex:2;padding:6px;border:1px solid #ddd;border-radius:4px;"><input type="number" placeholder="数量(kg)" class="r_qty" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:4px;"><input placeholder="用途" class="r_purpose" style="flex:2;padding:6px;border:1px solid #ddd;border-radius:4px;"><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#e74c3c;cursor:pointer;">✕</button>';
+    document.getElementById('r_items').appendChild(div);
+}
+function saveRequest() {
+    const items = [];
+    document.querySelectorAll('#r_items .item-row').forEach(row => {
+        const name = row.querySelector('.r_name')?.value.trim();
+        const qty = parseFloat(row.querySelector('.r_qty')?.value) || 0;
+        if(name && qty > 0) items.push({material_name:name, quantity_kg:qty, purpose:row.querySelector('.r_purpose')?.value||''});
+    });
+    if(items.length===0) return showToast('⚠️ 请至少添加一项材料','warning');
+    fetch('/api/material-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        project_id: parseInt(document.getElementById('r_project').value),
+        request_date: document.getElementById('r_date').value,
+        applicant: document.getElementById('r_applicant').value,
+        notes: document.getElementById('r_notes').value,
+        items: items,
+    })}).then(r=>r.json()).then(d=>{if(d.status==='ok'){showToast('✅ 申购已提交');closeModal('reqModal');loadReqs();}});
+}
+function approveReq(rid){fetch('/api/material-requests/'+rid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'已批准',approver:'管理员',approved_date:new Date().toISOString().split('T')[0]})}).then(()=>{showToast('✅ 已批准');closeModal('detailModal');loadReqs();});}
+function rejectReq(rid){fetch('/api/material-requests/'+rid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'已拒绝'})}).then(()=>{showToast('已拒绝');closeModal('detailModal');loadReqs();});}
+function deleteReq(rid){if(!confirm('确定删除？'))return;fetch('/api/material-requests/'+rid,{method:'DELETE'}).then(()=>{showToast('🗑️ 已删除');closeModal('detailModal');loadReqs();});}
+function closeModal(id){document.getElementById(id).classList.remove('active');}
+document.querySelectorAll('.modal-overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('active');}));
+document.addEventListener('DOMContentLoaded', init);
+</script></body></html>
