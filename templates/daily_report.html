@@ -1,0 +1,100 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>施工日报 - {{ report.project_name }}</title>
+<style>
+@page{margin:12mm}*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;color:#222;background:#fff;padding:20px;font-size:13px}
+@media print{body{padding:0}.no-print{display:none!important}}
+.header{text-align:center;padding:20px 0;border-bottom:2px solid #1a5276;margin-bottom:16px}
+.header h1{font-size:18px;color:#1a5276;letter-spacing:2px}
+.header .meta{font-size:11px;color:#888;margin-top:4px}
+.section{margin-bottom:16px;page-break-inside:avoid}
+.section h2{font-size:14px;color:#1a5276;border-left:3px solid #1a5276;padding-left:8px;margin-bottom:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.grid .item{background:#f8f9fa;padding:8px 12px;border-radius:6px}
+.grid .item label{font-size:10px;color:#888;display:block}
+.grid .item .val{font-size:14px;font-weight:600;color:#222;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0}
+th{background:#1a5276;color:#fff;padding:6px 8px;text-align:left;font-weight:500}
+td{padding:5px 8px;border-bottom:1px solid #eee}
+.footer{text-align:center;padding:12px;color:#999;font-size:9px;border-top:1px solid #eee;margin-top:20px}
+</style></head>
+<body>
+<button onclick="window.print()" class="no-print" style="position:fixed;top:12px;right:12px;z-index:999;padding:8px 20px;background:#1a5276;color:#fff;border:none;border-radius:6px;cursor:pointer;">🖨️ 打印</button>
+<button onclick="history.back()" class="no-print" style="position:fixed;top:12px;right:150px;z-index:999;padding:8px 20px;background:#eee;border:none;border-radius:6px;cursor:pointer;">← 返回</button>
+
+<div class="header">
+    <h1>永颐无机磨石 · 施工日报</h1>
+    <div class="meta">{{ report.project_name }} | {{ report.report_date }} | 生成: {{ report.generated_at }}</div>
+</div>
+
+<div class="section">
+    <h2>🌤️ 当日概况</h2>
+    <div class="grid">
+        <div class="item"><label>天气</label><div class="val">{{ report.weather }}</div></div>
+        <div class="item"><label>温度</label><div class="val">{{ report.temperature or '-' }}</div></div>
+        <div class="item"><label>出勤人数</label><div class="val">{{ report.work_hours.total_workers }}人</div></div>
+        <div class="item"><label>总工时</label><div class="val">{{ report.work_hours.total_hours }}h</div></div>
+        <div class="item"><label>项目进度</label><div class="val">{{ report.overall_progress }}%</div></div>
+        <div class="item"><label>检查清单</label><div class="val">{{ report.checklist_progress.checked }}/{{ report.checklist_progress.total }}</div></div>
+    </div>
+</div>
+
+{% if report.daily_log %}
+<div class="section">
+    <h2>📝 施工内容</h2>
+    <table><thead><tr><th>施工内容</th><th>材料使用</th><th>问题记录</th></tr></thead><tbody>
+    <tr>
+        <td>{{ report.daily_log.work_content or '-' }}</td>
+        <td>{{ report.daily_log.materials_used or '-' }}</td>
+        <td>{{ report.daily_log.issues or '无' }}</td>
+    </tr></tbody></table>
+</div>
+{% endif %}
+
+{% if report.work_hours.details %}
+<div class="section">
+    <h2>👷 出工明细</h2>
+    <table><thead><tr><th>姓名</th><th>岗位</th><th>工时</th><th>工作类型</th></tr></thead><tbody>
+    {% for w in report.work_hours.details %}
+    <tr><td>{{ w.name }}</td><td>{{ w.role }}</td><td>{{ w.hours }}h</td><td>{{ w.work_type or '-' }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+</div>
+{% endif %}
+
+{% if report.materials %}
+<div class="section">
+    <h2>🧱 材料进场</h2>
+    <table><thead><tr><th>材料</th><th>数量(kg)</th><th>单价</th><th>金额</th></tr></thead><tbody>
+    {% for m in report.materials %}
+    <tr><td>{{ m.material_name }}</td><td>{{ m.quantity_kg }}</td><td>¥{{ m.unit_price }}</td><td>¥{{ m.total_cost }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+</div>
+{% endif %}
+
+{% if report.curing %}
+<div class="section">
+    <h2>💧 养护记录</h2>
+    <table><thead><tr><th>天气</th><th>温度</th><th>湿度</th><th>养护措施</th></tr></thead><tbody>
+    {% for c in report.curing %}
+    <tr><td>{{ c.weather }}</td><td>{{ c.temp_min }}~{{ c.temp_max }}°C</td><td>{{ c.humidity }}%</td><td>{{ c.curing_measure or '-' }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+</div>
+{% endif %}
+
+{% if report.acceptance %}
+<div class="section">
+    <h2>📋 当日验收</h2>
+    <table><thead><tr><th>类型</th><th>验收人</th><th>结果</th><th>评分</th></tr></thead><tbody>
+    {% for a in report.acceptance %}
+    <tr><td>{{ a.acceptance_type }}</td><td>{{ a.inspector or '-' }}</td><td>{{ a.result }}</td><td>{{ a.score }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+</div>
+{% endif %}
+
+<div class="footer">永颐无机磨石 · 施工管理平台 | 本日报由系统自动生成</div>
+</body></html>

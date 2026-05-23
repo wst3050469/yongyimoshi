@@ -1653,6 +1653,49 @@ document.addEventListener('DOMContentLoaded', function() { loadExportProjects();
         }
     });
 });
+
+let searchTimer;
+function doSearch(q) {
+    clearTimeout(searchTimer);
+    const div = document.getElementById('searchResults');
+    if (!q || q.length < 1) { div.style.display = 'none'; return; }
+    searchTimer = setTimeout(() => {
+        fetch('/api/search?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(data => {
+            let html = '';
+            const types = {'projects':'🏗️ 项目','logs':'📝 日志','suppliers':'🏢 供应商','workers':'👷 工人','equipment':'🔧 设备'};
+            let total = 0;
+            for (const [key, label] of Object.entries(types)) {
+                if (data[key] && data[key].length > 0) {
+                    total += data[key].length;
+                    html += '<div style="padding:4px 10px;font-size:0.75rem;color:#888;background:#f5f5f5;">'+label+'</div>';
+                    data[key].forEach(item => {
+                        const link = key === 'projects' ? '/project/'+item.id+'/dashboard' : '#';
+                        html += '<a href="'+link+'" style="display:block;padding:6px 10px;text-decoration:none;color:#333;font-size:0.85rem;border-bottom:1px solid #f0f0f0;" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background=''">';
+                        html += '<strong>'+item.name.slice(0,40)+'</strong>';
+                        if (item.info) html += '<span style="color:#888;font-size:0.75rem;margin-left:8px;">'+item.info+'</span>';
+                        html += '</a>';
+                    });
+                }
+            }
+            if (!html) html = '<div style="padding:12px;text-align:center;color:#999;font-size:0.85rem;">未找到相关结果</div>';
+            div.innerHTML = html;
+            div.style.display = 'block';
+        });
+    }, 300);
+}
+function showSearchResults() {
+    const div = document.getElementById('searchResults');
+    if (div.innerHTML) div.style.display = 'block';
+}
+document.addEventListener('click', function(e) {
+    const div = document.getElementById('searchResults');
+    if (div && !e.target.closest('#globalSearch') && !e.target.closest('#searchResults')) {
+        div.style.display = 'none';
+    }
+});
+
 </script>
 </body>
 </html>

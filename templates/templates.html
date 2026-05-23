@@ -1,0 +1,82 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>项目模板 - 永颐施工平台</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.tpl-card{border:1px solid #e0e0e0;border-radius:10px;padding:16px;background:#fff;cursor:pointer;transition:all .2s}
+.tpl-card:hover{border-color:#2980b9;box-shadow:0 4px 16px rgba(41,128,185,0.1)}
+.tpl-card h3{margin:0 0 6px;font-size:1rem}
+.tpl-card .meta{font-size:0.82rem;color:#666;line-height:1.6}
+</style></head>
+<body>
+<header class="app-header no-print"><h1>📋 项目模板</h1><div class="subtitle">快速创建项目 · 复用配置 | <a href="/" style="color:white;">← 返回</a></div></header>
+<main class="main-content">
+<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <button class="btn btn-primary" onclick="openSaveModal()">💾 保存当前配置为模板</button>
+    <span id="tplCount" style="font-size:0.85rem;color:#888;"></span>
+</div>
+<div id="tplList" class="tpl-grid"><p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">加载中...</p></div>
+
+<div class="modal-overlay" id="tplModal"><div class="modal">
+<h2>💾 保存为模板</h2>
+<div class="form-row"><label>模板名称 *</label><input id="t_name" placeholder="如: 标准100m²磨石项目"></div>
+<div class="form-row"><label>描述</label><textarea id="t_desc" rows="2" placeholder="说明此模板的适用场景..."></textarea></div>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+<button class="btn" onclick="closeModal('tplModal')" style="background:#eee;">取消</button>
+<button class="btn btn-primary" onclick="saveTemplate()">💾 保存</button></div>
+</div></div>
+</main>
+<script>
+function loadTemplates() {
+    fetch('/api/templates').then(r=>r.json()).then(templates => {
+        document.getElementById('tplCount').textContent = `(共${templates.length}个)`;
+        const div = document.getElementById('tplList');
+        if(templates.length===0){div.innerHTML='<p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">暂无模板，点击上方按钮创建</p>';return;}
+        div.innerHTML = templates.map(t => {
+            let config = {};
+            try{config=JSON.parse(t.config);}catch(e){}
+            return `<div class="tpl-card">
+                <h3>${t.name}</h3>
+                <div class="meta">${t.description||'无描述'}</div>
+                <div class="meta" style="margin-top:6px;">
+                    📐 ${config.area||'默认'}m² | 📏 基层${config.base_thickness||50}mm/面层${config.surface_thickness||15}mm
+                    <div>🕐 ${t.created_at}</div>
+                </div>
+                <div style="margin-top:10px;display:flex;gap:6px;">
+                    <button class="btn btn-primary" onclick="useTemplate(${t.id},'${t.name}')" style="font-size:0.8rem;padding:5px 14px;">🚀 使用此模板</button>
+                    <button class="btn" onclick="deleteTemplate(${t.id})" style="font-size:0.8rem;padding:5px 14px;background:#fce4ec;color:#c62828;">🗑️</button>
+                </div>
+            </div>`;
+        }).join('');
+    });
+}
+
+function openSaveModal() {
+    document.getElementById('t_name').value='';
+    document.getElementById('t_desc').value='';
+    document.getElementById('tplModal').classList.add('active');
+}
+
+function saveTemplate() {
+    const name = document.getElementById('t_name').value.trim();
+    if(!name) return showToast('⚠️ 模板名称不能为空','warning');
+    const config = {area: 100, base_thickness: 50, surface_thickness: 15, location: ''};
+    fetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        name: name,
+        description: document.getElementById('t_desc').value.trim(),
+        config: config,
+    })}).then(r=>r.json()).then(d=>{if(d.status==='ok'){showToast('✅ 模板已保存');closeModal('tplModal');loadTemplates();}});
+}
+
+function useTemplate(tid, name) {
+    if(!confirm(`使用模板「${name}」创建新项目？`)) return;
+    fetch('/api/projects/from-template/'+tid,{method:'POST'})
+    .then(r=>r.json()).then(d=>{if(d.status==='ok'){showToast('✅ 项目已创建');setTimeout(()=>window.location.href='/project/'+d.project_id+'/dashboard',500);}});
+}
+
+function deleteTemplate(tid){if(!confirm('确定删除？'))return;fetch('/api/templates/'+tid,{method:'DELETE'}).then(()=>{showToast('🗑️ 已删除');loadTemplates();});}
+function closeModal(id){document.getElementById(id).classList.remove('active');}
+document.querySelectorAll('.modal-overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('active');}));
+document.addEventListener('DOMContentLoaded', loadTemplates);
+</script></body></html>

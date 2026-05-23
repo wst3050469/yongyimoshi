@@ -1444,6 +1444,107 @@ def api_analytics():
 
 
 # ============================================================
+# 项目模板 & 材料对比 & 日报 & 搜索
+# ============================================================
+
+from database import (
+    add_project_template, get_project_templates, delete_project_template,
+    set_material_consumption, get_material_consumption,
+    generate_daily_report, global_search,
+)
+
+
+@app.route('/templates')
+def templates_page():
+    return render_template('templates.html')
+
+
+@app.route('/api/templates', methods=['GET'])
+def api_templates_list():
+    return jsonify(get_project_templates())
+
+
+@app.route('/api/templates', methods=['POST'])
+def api_templates_add():
+    data = request.get_json()
+    if not data or not data.get('name'):
+        return api_error("模板名称不能为空")
+    tid = add_project_template(name=data['name'], description=data.get('description',''), config=data.get('config',{}))
+    return jsonify({"status": "ok", "id": tid})
+
+
+@app.route('/api/templates/<int:tid>', methods=['DELETE'])
+def api_templates_delete(tid):
+    delete_project_template(tid)
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/projects/from-template/<int:tid>', methods=['POST'])
+def api_projects_from_template(tid):
+    from database import get_project_templates, create_project
+    tmpl = next((t for t in get_project_templates() if t['id'] == tid), None)
+    if not tmpl:
+        return api_error("模板不存在")
+    import json as _json
+    try:
+        config = _json.loads(tmpl['config'])
+    except:
+        config = {}
+    pid = create_project(name=tmpl['name']+' - 新项目', area=float(config.get('area',100)),
+                         base_thickness=float(config.get('base_thickness',50)),
+                         surface_thickness=float(config.get('surface_thickness',15)),
+                         location=config.get('location',''))
+    return jsonify({"status":"ok","project_id":pid})
+
+
+@app.route('/api/material-consumption', methods=['GET'])
+def api_material_consumption_list():
+    pid = request.args.get('project_id', 0, type=int)
+    if not pid:
+        return api_error("缺少 project_id")
+    return jsonify(get_material_consumption(pid))
+
+
+@app.route('/api/material-consumption', methods=['POST'])
+def api_material_consumption_set():
+    data = request.get_json()
+    if not data or not data.get('project_id') or not data.get('material_name'):
+        return api_error("缺少 project_id 或 material_name")
+    cid = set_material_consumption(project_id=int(data['project_id']), material_name=data['material_name'],
+                                   planned_kg=float(data.get('planned_kg',0)), actual_kg=float(data.get('actual_kg',0)),
+                                   unit=data.get('unit','kg'), notes=data.get('notes',''))
+    return jsonify({"status":"ok","id":cid})
+
+
+@app.route('/api/daily-report')
+def api_daily_report():
+    pid = request.args.get('project_id', 0, type=int)
+    date = request.args.get('date', '')
+    if not pid:
+        return api_error("缺少 project_id")
+    report = generate_daily_report(pid, date)
+    if 'error' in report:
+        return api_error(report['error'])
+    return jsonify(report)
+
+
+@app.route('/project/<int:pid>/daily-report')
+def daily_report_page(pid):
+    report = generate_daily_report(pid)
+    if 'error' in report:
+        return api_error(report['error'])
+    return render_template('daily_report.html', report=report)
+
+
+@app.route('/api/search')
+def api_search():
+    q = request.args.get('q', '').strip()
+    if not q or len(q) < 1:
+        return jsonify({})
+    return jsonify(global_search(q))
+
+
+# ============================================================
 # 错误处理器
 # ============================================================
 

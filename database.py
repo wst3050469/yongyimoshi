@@ -334,6 +334,25 @@ def init_db():
             notes TEXT DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS project_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            config TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS material_consumption (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            material_name TEXT NOT NULL,
+            planned_kg REAL DEFAULT 0,
+            actual_kg REAL DEFAULT 0,
+            unit TEXT DEFAULT 'kg',
+            notes TEXT DEFAULT '',
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
     """)
 
     conn.commit()
@@ -1982,6 +2001,255 @@ def delete_subcontractor(sid: int) -> bool:
 
 
 # ============================================================
+# 项目模板管理
+# ============================================================
+
+def add_project_template(name: str, description: str = "",
+                         config: dict = None) -> int:
+    """保存项目模板"""
+    import json as _json
+    if config is None:
+        config = {}
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO project_templates (name, description, config)
+        VALUES (?, ?, ?)
+    """, (name, description, _json.dumps(config, ensure_ascii=False)))
+    tid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return tid
+
+
+def get_project_templates() -> List[Dict]:
+    """获取所有项目模板"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM project_templates ORDER BY created_at DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_project_template(tid: int) -> bool:
+    """删除项目模板"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM project_templates WHERE id = ?", (tid,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ============================================================
+# 材料用量对比
+# ============================================================
+
+def set_material_consumption(project_id: int, material_name: str,
+                              planned_kg: float = 0, actual_kg: float = 0,
+                              unit: str = "kg", notes: str = "") -> int:
+    """设置材料用量（计划vs实际）"""
+    conn = get_db()
+    cursor = conn.cursor()
+    # 检查是否已存在
+    existing = cursor.execute("""
+        SELECT id FROM material_consumption
+        WHERE project_id = ? AND material_name = ?
+    """, (project_id, material_name)).fetchone()
+    if existing:
+        cursor.execute("""
+            UPDATE material_consumption SET planned_kg = ?, actual_kg = ?,
+                unit = ?, notes = ?
+            WHERE id = ?
+        """, (planned_kg, actual_kg, unit, notes, existing['id']))
+        cid = existing['id']
+    else:
+        cursor.execute("""
+            INSERT INTO material_consumption (project_id, material_name, planned_kg, actual_kg, unit, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (project_id, material_name, planned_kg, actual_kg, unit, notes))
+        cid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return cid
+
+
+def get_material_consumption(project_id: int) -> List[Dict]:
+    """获取项目材料用量对比"""
+    conn = get_db()
+    cursor = conn.cursor()
+    rows = cursor.execute("""
+        SELECT * FROM material_consumption WHERE project_id = ?
+        ORDER BY material_name
+    """, (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ============================================================
+# 日报生成
+# ============================================================
+
+def generate_daily_report(project_id: int, report_date: str = "") -> Dict:
+    """
+    生成施工日报
+
+    参数:
+        project_id: 项目ID
+        report_date: 日期（默认今天）
+
+    返回:
+        日报数据
+    """
+    if not report_date:
+        from datetime import date
+        report_date = date.today().strftime("%Y-%m-%d")
+
+    project = get_project(project_id)
+    if not project:
+        return {"error": "项目不存在"}
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 当天日志
+    log = cursor.execute("""
+        SELECT * FROM daily_logs WHERE project_id = ? AND log_date = ?
+    """, (project_id, report_date)).fetchone()
+    daily_log = dict(log) if log else None
+
+    # 当天工时
+    work_hours_rows = cursor.execute("""
+        SELECT w.name, w.role, wh.hours, wh.work_type
+        FROM work_hours wh
+        JOIN workers w ON wh.worker_id = w.id
+        WHERE wh.project_id = ? AND wh.work_date = ?
+    """, (project_id, report_date)).fetchall()
+    today_hours = [dict(r) for r in work_hours_rows]
+    total_workers = len(set(r['name'] for r in today_hours))
+    total_hours = sum(r['hours'] or 0 for r in today_hours)
+
+    # 当天材料记录
+    materials_today = cursor.execute("""
+        SELECT material_name, quantity_kg, unit_price, total_cost
+        FROM material_records WHERE project_id = ? AND record_date = ?
+    """, (project_id, report_date)).fetchall()
+
+    # 当天养护记录
+    curing_today = cursor.execute("""
+        SELECT * FROM curing_records WHERE project_id = ? AND record_date = ?
+    """, (project_id, report_date)).fetchall()
+
+    # 当天检查进度
+    checklist = cursor.execute("""
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN is_checked=1 THEN 1 ELSE 0 END) as checked
+        FROM checklist_state WHERE project_id = ?
+    """, (project_id,)).fetchone()
+
+    # 当天验收
+    acc_today = cursor.execute("""
+        SELECT * FROM acceptance_records
+        WHERE project_id = ? AND check_date = ?
+    """, (project_id, report_date)).fetchall()
+
+    conn.close()
+
+    # 累计进度
+    dashboard = get_dashboard_data(project_id)
+
+    return {
+        "project_name": project['name'],
+        "report_date": report_date,
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "weather": daily_log['weather'] if daily_log else '未记录',
+        "temperature": daily_log['temperature'] if daily_log else '',
+        "daily_log": daily_log,
+        "work_hours": {
+            "total_workers": total_workers,
+            "total_hours": total_hours,
+            "details": today_hours,
+        },
+        "materials": [dict(r) for r in materials_today],
+        "curing": [dict(r) for r in curing_today],
+        "acceptance": [dict(r) for r in acc_today],
+        "checklist_progress": {
+            "total": checklist['total'] or 0,
+            "checked": checklist['checked'] or 0,
+            "percent": round((checklist['checked'] or 0) / max(checklist['total'] or 1, 1) * 100, 1),
+        },
+        "overall_progress": dashboard.get('overall_progress', 0),
+    }
+
+
+# ============================================================
+# 全局搜索
+# ============================================================
+
+def global_search(query: str) -> Dict:
+    """
+    全局搜索
+
+    参数:
+        query: 搜索关键词
+
+    返回:
+        按分类的结果
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    q = f"%{query}%"
+
+    results = {}
+
+    # 项目
+    projects = cursor.execute("""
+        SELECT id, name, 'project' as type, status as info
+        FROM projects WHERE name LIKE ? OR location LIKE ? OR notes LIKE ?
+        LIMIT 10
+    """, (q, q, q)).fetchall()
+    results['projects'] = [dict(r) for r in projects]
+
+    # 施工日志
+    logs = cursor.execute("""
+        SELECT ld.id, ld.work_content as name, 'log' as type, p.name as info
+        FROM daily_logs ld JOIN projects p ON ld.project_id = p.id
+        WHERE ld.work_content LIKE ? OR ld.issues LIKE ? OR ld.materials_used LIKE ?
+        LIMIT 10
+    """, (q, q, q)).fetchall()
+    results['logs'] = [dict(r) for r in logs]
+
+    # 供应商
+    suppliers = cursor.execute("""
+        SELECT id, name, 'supplier' as type, CONCAT(contact_person, ' ', phone) as info
+        FROM suppliers WHERE name LIKE ? OR contact_person LIKE ? OR phone LIKE ?
+        LIMIT 10
+    """, (q, q, q)).fetchall()
+    results['suppliers'] = [dict(r) for r in suppliers]
+
+    # 工人
+    workers = cursor.execute("""
+        SELECT id, name, 'worker' as type, role as info
+        FROM workers WHERE name LIKE ? OR phone LIKE ? OR role LIKE ?
+        LIMIT 10
+    """, (q, q, q)).fetchall()
+    results['workers'] = [dict(r) for r in workers]
+
+    # 设备
+    eq = cursor.execute("""
+        SELECT id, name, 'equipment' as type, CONCAT(type, ' ', status) as info
+        FROM equipment WHERE name LIKE ? OR type LIKE ? OR model LIKE ?
+        LIMIT 10
+    """, (q, q, q)).fetchall()
+    results['equipment'] = [dict(r) for r in eq]
+
+    conn.close()
+    return results
+
+
+# ============================================================
 # 项目分析看板
 # ============================================================
 
@@ -2510,6 +2778,9 @@ def optimize_database():
         "CREATE INDEX IF NOT EXISTS idx_mat_req_status ON material_requests(status)",
         "CREATE INDEX IF NOT EXISTS idx_req_items_request ON request_items(request_id)",
         "CREATE INDEX IF NOT EXISTS idx_subcontractors_status ON subcontractors(status)",
+        "CREATE INDEX IF NOT EXISTS idx_templates_name ON project_templates(name)",
+        "CREATE INDEX IF NOT EXISTS idx_consumption_project ON material_consumption(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_consumption_material ON material_consumption(material_name)",
     ]
     for idx in indexes:
         cursor.execute(idx)
@@ -2534,7 +2805,8 @@ def get_db_stats() -> Dict:
               "budget_items", "notifications", "equipment", "equipment_usage",
               "acceptance_records", "acceptance_items",
               "safety_checks", "safety_incidents", "documents",
-              "material_requests", "request_items", "subcontractors"]
+              "material_requests", "request_items", "subcontractors",
+              "project_templates", "material_consumption"]
     for table in tables:
         count = cursor.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         stats[table] = count

@@ -128,7 +128,24 @@
 
     <div class="card">
     <div class="card">
-        <h2>💰 成本预算</h2>
+        <h2>📊 材料用量对比</h2>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+    <select id="mc_material" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+        <option value="硅酸盐水泥">硅酸盐水泥</option>
+        <option value="钢纤维">钢纤维</option>
+        <option value="石英砂">石英砂</option>
+        <option value="SE-100渗透剂">SE-100渗透剂</option>
+        <option value="SE-200固化剂">SE-200固化剂</option>
+        <option value="SE-300色粉">SE-300色粉</option>
+    </select>
+    <input id="mc_planned" type="number" placeholder="计划量(kg)" style="width:120px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+    <input id="mc_actual" type="number" placeholder="实际量(kg)" style="width:120px;padding:6px;border:1px solid #ddd;border-radius:6px;">
+    <button class="btn btn-primary" onclick="setConsumption()">➕ 记录</button>
+</div>
+<div id="consumptionList"><p style="color:#999;font-size:0.85rem;">暂无数据</p></div>
+
+<div class="card">
+    <h2>💰 成本预算</h2>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:12px;" id="budgetSummary">
             <div style="background:#f8f9fa;padding:10px;border-radius:8px;text-align:center;">
                 <div style="font-size:0.75rem;color:#888;">预算总额</div>
@@ -193,6 +210,29 @@
 </div>
 
 <script>
+function loadConsumption() {
+    const pid = getProjectId();
+    if (!pid) return;
+    fetch('/api/material-consumption?project_id='+pid).then(r=>r.json()).then(items => {
+        const div = document.getElementById('consumptionList');
+        if (items.length===0) { div.innerHTML='<p style="color:#999;font-size:0.85rem;">暂无数据</p>'; return; }
+        div.innerHTML = '<table class="result-table"><thead><tr><th>材料</th><th>计划(kg)</th><th>实际(kg)</th><th>偏差</th><th>偏差率</th></tr></thead><tbody>'+
+            items.map(m => {
+                const diff = m.planned_kg - m.actual_kg;
+                const rate = m.planned_kg > 0 ? ((diff/m.planned_kg)*100).toFixed(1) : 0;
+                return '<tr><td>'+m.material_name+'</td><td>'+m.planned_kg+'</td><td>'+m.actual_kg+'</td><td style="color:'+(diff>=0?'#27ae60':'#e74c3c')+';">'+(diff>=0?'+':'')+diff.toFixed(1)+'</td><td>'+rate+'%</td></tr>';
+            }).join('')+'</tbody></table>';
+    });
+}
+function setConsumption() {
+    const pid = getProjectId(); if(!pid) return;
+    fetch('/api/material-consumption',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        project_id: pid,
+        material_name: document.getElementById('mc_material').value,
+        planned_kg: parseFloat(document.getElementById('mc_planned').value)||0,
+        actual_kg: parseFloat(document.getElementById('mc_actual').value)||0,
+    })}).then(r=>r.json()).then(d=>{if(d.status==='ok'){showToast('✅ 已记录');loadConsumption();}});
+}
 function loadBudget() {
     const pid = getProjectId();
     if (!pid) return;
@@ -335,6 +375,7 @@ function deleteCuring(rid) {
 const origInit = window.initDashboard;
 window.initDashboard = function() {
     if (origInit) origInit();
+    loadConsumption();
     loadBudget();
     loadWorkHours();
     loadCuringRecords();
