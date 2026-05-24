@@ -35,7 +35,34 @@ import json
 import os
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'yongyi-terrazzo-secret-key-change-in-production')
+app.secret_key = os.environ.get('SECRET_KEY')
+if not app.secret_key:
+    raise RuntimeError(
+        "❌ SECRET_KEY 环境变量未设置！\n"
+        "   请在运行前设置: export SECRET_KEY='your-secure-random-key-here'\n"
+        "   或创建 .env 文件并添加: SECRET_KEY=your-secure-random-key-here"
+    )
+
+
+# ============================================================
+# 反向代理路径前缀支持（用于 Nginx 子路径部署）
+# ============================================================
+
+class PrefixMiddleware:
+    """WSGI 中间件：处理反向代理的路径前缀"""
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        script_name = environ.get('HTTP_X_SCRIPT_NAME', '')
+        if script_name:
+            environ['SCRIPT_NAME'] = script_name
+            path_info = environ.get('PATH_INFO', '')
+            if path_info.startswith(script_name):
+                environ['PATH_INFO'] = path_info[len(script_name):]
+        return self.app(environ, start_response)
+
+app.wsgi_app = PrefixMiddleware(app.wsgi_app)
 
 
 # ============================================================
@@ -1873,6 +1900,67 @@ def api_search():
 
 
 # ============================================================
+# 公开页面 & SEO
+# ============================================================
+
+@app.route('/public')
+def page_public():
+    """公司公开介绍页（无需登录）"""
+    return render_template('public.html')
+
+
+@app.route('/faq')
+def page_faq():
+    """无机磨石施工FAQ页面（无需登录）"""
+    return render_template('faq.html')
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    """搜索引擎爬虫规则"""
+    return """User-agent: *
+Allow: /
+Allow: /platform/
+Allow: /platform/public
+Allow: /platform/faq
+Disallow: /admin/
+Disallow: /api/auth/
+Disallow: /api/admin/
+
+Sitemap: https://ai.jinmojianshe.com/sitemap.xml
+""", 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    """站点地图"""
+    from datetime import date
+    today = date.today().isoformat()
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://ai.jinmojianshe.com/platform/</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://ai.jinmojianshe.com/platform/public</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://ai.jinmojianshe.com/platform/faq</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>
+""", 200, {'Content-Type': 'application/xml; charset=utf-8'}
+
+
+# ============================================================
 # 错误处理器
 # ============================================================
 
@@ -1909,6 +1997,9 @@ if __name__ == '__main__':
     from database import init_db, get_users, add_user
     init_db()
     if len(get_users()) == 0:
-        add_user('admin', generate_password_hash('admin123'), '系统管理员', role='admin')
-        print("✅ 已创建默认管理员: admin / admin123")
+        # 默认管理员密码可通过环境变量设置，开发环境默认 admin123
+        default_pwd = os.environ.get('DEFAULT_ADMIN_PWD', 'admin123')
+        add_user('admin', generate_password_hash(default_pwd), '系统管理员', role='admin')
+        print(f"✅ 已创建默认管理员: admin / {default_pwd}")
+        print("   ⚠️ 生产环境请通过环境变量 DEFAULT_ADMIN_PWD 设置强密码")
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -5,6 +5,7 @@
 import sys
 import os
 import json
+os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app import app
