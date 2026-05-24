@@ -1933,6 +1933,18 @@ def page_guide_compare():
     return render_template('guide-compare.html')
 
 
+@app.route('/guide-maintenance')
+def page_guide_maintenance():
+    """磨石地坪养护指南（无需登录）"""
+    return render_template('guide-maintenance.html')
+
+
+@app.route('/guide-budget')
+def page_guide_budget():
+    """磨石地坪预算指南（无需登录）"""
+    return render_template('guide-budget.html')
+
+
 @app.route('/robots.txt')
 def robots_txt():
     """搜索引擎爬虫规则"""
@@ -1988,6 +2000,18 @@ def sitemap_xml():
   </url>
   <url>
     <loc>https://ai.jinmojianshe.com/platform/guide-compare</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ai.jinmojianshe.com/platform/guide-maintenance</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ai.jinmojianshe.com/platform/guide-budget</loc>
     <lastmod>{today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
