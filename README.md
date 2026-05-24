@@ -5,9 +5,9 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Flask](https://img.shields.io/badge/Flask-3.0%2B-green)
 ![SQLite](https://img.shields.io/badge/SQLite-3-orange)
-![Tests](https://img.shields.io/badge/Tests-112%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-142%20passing-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
-![Version](https://img.shields.io/badge/Version-4.2.0-red)
+![Version](https://img.shields.io/badge/Version-4.4.1-red)
 
 **浙江永颐装饰工程有限公司 · 无机磨石施工全过程数字化管理平台**
 
