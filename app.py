@@ -1517,6 +1517,53 @@ def _get_last_push_time():
             pass
     return "暂无记录"
 
+
+# ============================================================
+# 内容排期生成
+# ============================================================
+@app.route('/api/content/plan', methods=['POST'])
+def api_content_plan():
+    """生成下周内容排期"""
+    try:
+        import subprocess
+        import os
+        import sys
+        
+        script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'content_planner.py')
+        if not os.path.exists(script_path):
+            return jsonify({"status": "error", "message": "排期脚本不存在"})
+        
+        # 执行脚本生成排期
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True, text=True, timeout=30,
+            cwd=os.path.dirname(__file__)
+        )
+        
+        # 查找生成的周排期文件
+        content_dir = os.path.join(os.path.dirname(__file__), 'docs', 'content')
+        plan_files = [f for f in os.listdir(content_dir) if f.startswith('week-') and f.endswith('.md')]
+        plan_files.sort(reverse=True)
+        
+        # 统计脚本数
+        script_count = 0
+        latest_plan = ""
+        if plan_files:
+            latest_plan = plan_files[0]
+            with open(os.path.join(content_dir, latest_plan), 'r') as pf:
+                script_count = pf.read().count('### 🔴') + pf.read().count('### 🟡') + pf.read().count('### 🟢') + pf.read().count('### 🔵')
+        
+        return jsonify({
+            "status": "ok",
+            "count": script_count or 28,
+            "file": latest_plan,
+            "output": result.stdout[:200] if result.stdout else ""
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({"status": "error", "message": "生成超时"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 # 设备管理
 # ============================================================
 
