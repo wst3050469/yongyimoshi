@@ -35,7 +35,7 @@ EXPOSE 5000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/params')" || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen("http://localhost:5000/api/health")
 
 # 启动
 CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "app:app"]

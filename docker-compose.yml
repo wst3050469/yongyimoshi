@@ -20,8 +20,9 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/params')"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
