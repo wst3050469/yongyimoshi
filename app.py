@@ -1551,12 +1551,31 @@ def api_content_plan():
         if plan_files:
             latest_plan = plan_files[0]
             with open(os.path.join(content_dir, latest_plan), 'r') as pf:
-                script_count = pf.read().count('### 🔴') + pf.read().count('### 🟡') + pf.read().count('### 🟢') + pf.read().count('### 🔵')
+                content_text = pf.read()
+                script_count = content_text.count('### 🔴') + content_text.count('### 🟡') + content_text.count('### 🟢') + content_text.count('### 🔵')
+        
+        # 推送到Webhook（如果已配置）
+        push_result = {"wechat": False, "dingtalk": False}
+        try:
+            from webhook import send_notification
+            plan_preview = ""
+            if latest_plan:
+                with open(os.path.join(content_dir, latest_plan), 'r') as pf:
+                    plan_preview = pf.read()[:600]
+            if plan_preview:
+                push_result = send_notification(
+                    title=f"📅 下周内容排期已生成（{script_count}条脚本）",
+                    message=plan_preview + "\n\n完整排期见管理后台",
+                    notif_type="daily_log"
+                )
+        except Exception as webhook_err:
+            push_result = {"error": str(webhook_err)}
         
         return jsonify({
             "status": "ok",
             "count": script_count or 28,
             "file": latest_plan,
+            "webhook_push": push_result,
             "output": result.stdout[:200] if result.stdout else ""
         })
     except subprocess.TimeoutExpired:
