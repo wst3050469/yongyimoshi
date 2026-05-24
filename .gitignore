@@ -26,3 +26,4 @@ Thumbs.db
 data/photos/*
 data/backups/*
 logs/*
+.env.production
