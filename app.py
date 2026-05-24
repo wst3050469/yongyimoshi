@@ -2400,7 +2400,10 @@ def api_reports_export_pdf(pid):
     
     response = make_response(pdf_data)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'attachment; filename="{safe_name}.pdf"'
+    # RFC 5987 for non-ASCII filenames
+    from urllib.parse import quote
+    encoded_name = quote(f"{safe_name}.pdf", encoding='utf-8')
+    response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded_name}"
     return response
 
 
