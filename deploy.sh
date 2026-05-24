@@ -10,7 +10,7 @@ ACTION=${1:-status}
 
 echo "=============================="
 echo " 永颐无机磨石 · 施工管理平台"
-echo " 版本: v4.3.1"
+echo " 版本: v4.4.1"
 echo "=============================="
 
 case "$ACTION" in
@@ -66,6 +66,19 @@ case "$ACTION" in
       echo "   请先执行: git remote add origin <仓库地址>"
     fi
     ;;
+  content-plan)
+    echo "📅 生成下周内容排期..."
+    python3 scripts/content_planner.py
+    echo ""
+    echo "💡 提示: 管理面板也可以一键生成"
+    ;;
+  health)
+    echo "🔍 深度健康检查..."
+    curl -s http://localhost:5000/api/health | python3 -m json.tool
+    ;;
+  check)
+    bash scripts/status.sh
+    ;;
   *)
     echo "用法: $0 {start|stop|restart|reload|status|logs|install|git-push}"
     echo ""
@@ -73,6 +86,9 @@ case "$ACTION" in
     echo "  $0 status    # 查看服务状态"
     echo "  $0 restart   # 重启服务"
     echo "  $0 logs      # 查看错误日志"
+    echo "  $0 check     # 全面状态检查"
+    echo "  $0 content-plan # 生成排期"
+    echo "  $0 health    # 健康检查"
     exit 1
     ;;
 esac
