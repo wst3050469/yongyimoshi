@@ -66,23 +66,38 @@ def _ensure_config_dir():
 
 
 def load_config() -> Dict:
-    """加载系统配置"""
+    """加载系统配置（JSON文件 + 环境变量覆盖）"""
     _ensure_config_dir()
+    config = DEFAULT_CONFIG.copy()
+    
+    # 从JSON文件加载
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                 user_config = json.load(f)
-                # 合并默认配置，确保所有字段存在
-                merged = DEFAULT_CONFIG.copy()
                 for section, values in user_config.items():
-                    if section in merged and isinstance(merged[section], dict):
-                        merged[section].update(values)
+                    if section in config and isinstance(config[section], dict):
+                        config[section].update(values)
                     else:
-                        merged[section] = values
-                return merged
+                        config[section] = values
         except (json.JSONDecodeError, IOError):
             pass
-    return DEFAULT_CONFIG.copy()
+    
+    # 环境变量覆盖（用于 Docker 部署）
+    env_overrides = {
+        ("webhook", "wechat_url"): "WECHAT_WEBHOOK_URL",
+        ("webhook", "dingtalk_url"): "DINGTALK_WEBHOOK_URL",
+        ("seo", "baidu_tongji_id"): "BAIDU_TONGJI_ID",
+        ("seo", "baidu_push_token"): "BAIDU_PUSH_TOKEN",
+    }
+    for (section, key), env_name in env_overrides.items():
+        env_value = os.environ.get(env_name)
+        if env_value:
+            if section not in config:
+                config[section] = {}
+            config[section][key] = env_value
+    
+    return config
 
 
 def save_config(config: Dict) -> bool:
