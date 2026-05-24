@@ -2349,6 +2349,76 @@ Sitemap: https://ai.jinmojianshe.com/sitemap.xml
 """, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 
+# ============================================================
+# 数据报告 API (v4.5.0)
+# ============================================================
+
+@app.route('/api/reports/overview')
+def api_reports_overview():
+    """全平台数据概览"""
+    from reports import generate_overview
+    return jsonify(generate_overview())
+
+
+@app.route('/api/reports/project-compare', methods=['POST'])
+def api_reports_project_compare():
+    """多项目对比分析"""
+    from reports import generate_project_compare
+    data = request.get_json() or {}
+    ids = data.get('project_ids', [])
+    if not ids:
+        return api_error("请提供项目ID列表")
+    return jsonify(generate_project_compare(ids))
+
+
+@app.route('/api/reports/project/<int:pid>')
+def api_reports_project(pid):
+    """单个项目完整报告"""
+    from reports import generate_project_report
+    report = generate_project_report(pid)
+    if not report:
+        return api_error("项目不存在")
+    return jsonify(report)
+
+
+@app.route('/api/reports/export-pdf/<int:pid>')
+def api_reports_export_pdf(pid):
+    """导出项目报告PDF"""
+    from reports import generate_pdf_report
+    pdf_data = generate_pdf_report(pid)
+    if not pdf_data:
+        return api_error("项目不存在或报告生成失败")
+    
+    # 获取项目名称用于文件名
+    from database import get_project
+    project = get_project(pid)
+    filename = f"项目报告_{project['name'] if project else pid}.pdf"
+    
+    response = make_response(pdf_data)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}.pdf"'
+    return response
+
+
+@app.route('/reports')
+def reports_page():
+    """数据报告中心页面"""
+    from database import get_projects
+    projects = get_projects()
+    return render_template('reports.html', projects=projects)
+
+
+@app.route('/project/<int:pid>/data-report')
+def project_report_page(pid):
+    """项目数据报告HTML页面"""
+    from reports import generate_project_report
+    report = generate_project_report(pid)
+    if not report:
+        return api_error("项目不存在")
+    return render_template('project_report.html', **report)
+
+
+
 @app.route('/sitemap.xml')
 def sitemap_xml():
     """站点地图"""

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据报告 - 永颐施工平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <style>
+        .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width:768px) { .report-grid { grid-template-columns: 1fr; } }
+        .stat-number-lg { font-size: 2.2rem; font-weight: 700; color: #1a5276; }
+        .compare-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+        .compare-table th { background: #1a5276; color: white; padding: 8px; text-align: left; font-size: 0.85rem; }
+        .compare-table td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 0.85rem; }
+        .compare-table tr:hover { background: #f0f7ff; }
+        .chart-container { height: 250px; position: relative; }
+        .project-select { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+        .project-select label { display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: #f0f7ff; border-radius: 20px; cursor: pointer; font-size: 0.85rem; }
+        .project-select input { margin: 0; }
+        .progress-bar { height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+        .progress-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .status-badge.active { background: #e3f2fd; color: #1565c0; }
+        .status-badge.completed { background: #e8f5e9; color: #2e7d32; }
+    </style>
+<script>!function(){var t=localStorage.getItem("yongyi_theme")||"light";document.documentElement.setAttribute("data-theme",t)}()</script>
+</head>
+<body>
+{% include 'sidebar.html' %}
+<header class="app-header no-print">
+    <h1>📊 数据报告中心</h1>
+    <div class="subtitle">项目对比 · 全平台概览 · 报告导出 | <a href="/" style="color:white;">← 返回首页</a></div>
+</header>
+
+<main class="main-content">
+    <!-- 全平台概览 -->
+    <div class="card">
+        <h2>📈 全平台数据概览</h2>
+        <div id="overviewCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;text-align:center;">
+            <div>加载中...</div>
+        </div>
+    </div>
+
+    <!-- 趋势图表 -->
+    <div class="report-grid">
+        <div class="card">
+            <h2>📅 月度日志趋势</h2>
+            <div class="chart-container"><canvas id="logTrendChart"></canvas></div>
+        </div>
+        <div class="card">
+            <h2>📊 项目状态分布</h2>
+            <div class="chart-container"><canvas id="statusChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- 项目对比 -->
+    <div class="card">
+        <h2>🔍 项目对比分析</h2>
+        <p style="color:#888;font-size:0.85rem;">选择要对比的项目（可多选）</p>
+        <div class="project-select" id="projectSelect"></div>
+        <div style="margin-top:8px;">
+            <button class="btn btn-primary" onclick="compareProjects()">📊 开始对比</button>
+            <button class="btn" onclick="selectTop5()" style="background:#e8f5e9;color:#2e7d32;">📌 选前5个</button>
+        </div>
+        <div id="compareResult" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="no-print" style="text-align:center;padding:16px;color:#999;font-size:0.8rem;">
+        永颐无机磨石 · 施工管理平台 v4.5.0
+    </div>
+</main>
+
+<script>
+let overviewData = null;
+let chartInstances = {};
+
+function loadOverview() {
+    fetch('/api/reports/overview')
+    .then(r => r.json())
+    .then(data => {
+        overviewData = data;
+        const div = document.getElementById('overviewCards');
+        const q = data.quality;
+        div.innerHTML = `
+            <div><div class="stat-number-lg">${data.total_projects}</div><div style="font-size:0.8rem;color:#888;">项目总数</div></div>
+            <div><div class="stat-number-lg">${data.total_area.toFixed(0)}</div><div style="font-size:0.8rem;color:#888;">总面积(m²)</div></div>
+            <div><div class="stat-number-lg">${Object.keys(data.tables).reduce((a,t) => a+data.tables[t], 0)}</div><div style="font-size:0.8rem;color:#888;">总数据记录</div></div>
+            <div><div class="stat-number-lg" style="color:${q.pass_rate >= 80 ? '#27ae60' : '#e67e22'}">${q.pass_rate}%</div><div style="font-size:0.8rem;color:#888;">质量合格率</div></div>
+        `;
+        renderLogTrend(data.log_trend);
+        renderStatusDistribution(data.status_distribution);
+    });
+}
+
+function renderLogTrend(trend) {
+    const ctx = document.getElementById('logTrendChart').getContext('2d');
+    if (chartInstances.logTrend) chartInstances.logTrend.destroy();
+    chartInstances.logTrend = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: trend.map(t => t.month),
+            datasets: [{
+                label: '日志数',
+                data: trend.map(t => t.count),
+                backgroundColor: '#2980b9',
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1 } }
+            }
+        }
+    });
+}
+
+function renderStatusDistribution(dist) {
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    if (chartInstances.status) chartInstances.status.destroy();
+    const colors = { '进行中': '#2980b9', '已完成': '#27ae60', '未开始': '#95a5a6', '已暂停': '#e67e22' };
+    chartInstances.status = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(dist),
+            datasets: [{
+                data: Object.values(dist),
+                backgroundColor: Object.keys(dist).map(k => colors[k] || '#95a5a6'),
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 } } }
+            }
+        }
+    });
+}
+
+function loadProjects() {
+    fetch('/api/projects')
+    .then(r => r.json())
+    .then(projects => {
+        const div = document.getElementById('projectSelect');
+        div.innerHTML = projects.map(p => `
+            <label><input type="checkbox" value="${p.id}"> ${p.name} (${p.area}m²)</label>
+        `).join('');
+    });
+}
+
+function selectTop5() {
+    const cbs = document.querySelectorAll('#projectSelect input[type="checkbox"]');
+    cbs.forEach((cb, i) => { cb.checked = i < 5; });
+}
+
+function compareProjects() {
+    const selected = Array.from(document.querySelectorAll('#projectSelect input:checked'));
+    if (selected.length === 0) { showToast('⚠️ 请至少选择一个项目', 'info'); return; }
+    const ids = selected.map(cb => parseInt(cb.value));
+    
+    fetch('/api/reports/project-compare', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_ids: ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        renderCompareResult(data.projects);
+    });
+}
+
+function renderCompareResult(projects) {
+    const div = document.getElementById('compareResult');
+    if (projects.length === 0) {
+        div.innerHTML = '<p style="color:#999;">暂无数据</p>';
+        return;
+    }
+    
+    let html = '<table class="compare-table"><thead><tr>' +
+        '<th>项目名称</th><th>面积(m²)</th><th>状态</th><th>进度</th>' +
+        '<th>日志</th><th>合格率</th><th>预算执行率</th><th>操作</th>' +
+        '</tr></thead><tbody>';
+    
+    projects.forEach(p => {
+        const statusClass = p.status === '已完成' ? 'completed' : 'active';
+        html += `<tr>
+            <td><a href="/project/${p.id}/dashboard" style="color:#2980b9;">${p.name}</a></td>
+            <td>${p.area}</td>
+            <td><span class="status-badge ${statusClass}">${p.status}</span></td>
+            <td>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="progress-bar" style="flex:1;">
+                        <div class="progress-bar-fill" style="width:${p.progress}%;background:${p.progress === 100 ? '#27ae60' : '#2980b9'};"></div>
+                    </div>
+                    <span style="font-size:0.8rem;">${p.progress}%</span>
+                </div>
+            </td>
+            <td>${p.log_count}</td>
+            <td style="color:${p.quality.pass_rate >= 80 ? '#27ae60' : '#e67e22'}">${p.quality.pass_rate}%</td>
+            <td>${p.budget.execution_rate}%</td>
+            <td><a href="/project/${p.id}/data-report" target="_blank" style="font-size:0.8rem;">📄 报告</a></td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    
+    // 汇总行
+    const avgProgress = (projects.reduce((s, p) => s + p.progress, 0) / projects.length).toFixed(1);
+    const avgQuality = (projects.reduce((s, p) => s + p.quality.pass_rate, 0) / projects.length).toFixed(1);
+    html += `<div style="margin-top:8px;padding:8px;background:#f8f9fa;border-radius:8px;font-size:0.85rem;display:flex;gap:16px;">
+        <span>📊 平均进度: <strong>${avgProgress}%</strong></span>
+        <span>✅ 平均合格率: <strong>${avgQuality}%</strong></span>
+        <span>📋 共 <strong>${projects.length}</strong> 个项目</span>
+    </div>`;
+    
+    div.innerHTML = html;
+}
+
+function showToast(msg, type) {
+    type = type || 'success';
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + type;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function() { t.remove(); }, 3000);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadOverview();
+    loadProjects();
+});
+</script>
+</body>
+</html>

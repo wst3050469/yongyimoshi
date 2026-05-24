@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目报告 - {{ project.name }} - 永颐施工平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { padding: 0; margin: 0; }
+            .card { break-inside: avoid; }
+        }
+        .report-header { text-align: center; padding: 24px 0; border-bottom: 2px solid #1a5276; margin-bottom: 24px; }
+        .report-header h1 { margin: 0; color: #1a5276; font-size: 1.6rem; }
+        .report-header .meta { color: #888; font-size: 0.85rem; margin-top: 8px; }
+        .metric-row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+        .metric-card { flex: 1; min-width: 120px; background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center; }
+        .metric-card .value { font-size: 1.8rem; font-weight: 700; color: #1a5276; }
+        .metric-card .label { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        .section-title { color: #2c3e50; border-left: 4px solid #1a5276; padding-left: 12px; margin: 24px 0 12px 0; font-size: 1.1rem; }
+        .phase-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+        .phase-name { width: 120px; font-size: 0.85rem; color: #555; }
+        .phase-bar { flex: 1; height: 20px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+        .phase-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+        .phase-pct { width: 40px; text-align: right; font-size: 0.8rem; color: #666; }
+        .action-bar { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+        .footer-text { text-align: center; color: #aaa; font-size: 0.8rem; padding: 24px 0; border-top: 1px solid #eee; margin-top: 32px; }
+    </style>
+<script>!function(){var t=localStorage.getItem("yongyi_theme")||"light";document.documentElement.setAttribute("data-theme",t)}()</script>
+</head>
+<body>
+{% include 'sidebar.html' %}
+<header class="app-header no-print">
+    <h1>📋 {{ project.name }} · 项目报告</h1>
+    <div class="subtitle">
+        <a href="/project/{{ project.id }}/dashboard" style="color:white;">← 返回仪表盘</a>
+        &nbsp;|&nbsp;
+        <a href="/api/reports/export-pdf/{{ project.id }}" style="color:white;">📥 下载PDF</a>
+        &nbsp;|&nbsp;
+        <button onclick="window.print()" style="background:transparent;border:1px solid rgba(255,255,255,0.5);color:white;padding:4px 12px;border-radius:4px;cursor:pointer;">🖨️ 打印</button>
+    </div>
+</header>
+
+<main class="main-content">
+    <div class="report-header no-print">
+        <h1>📋 {{ project.name }}</h1>
+        <div class="meta">报告生成时间: {{ generated_at }} | 浙江永颐装饰工程有限公司</div>
+    </div>
+
+    <!-- 项目概况 -->
+    <div class="card">
+        <h2 class="section-title">📊 项目概况</h2>
+        <div class="metric-row">
+            <div class="metric-card"><div class="value">{{ project.area }}</div><div class="label">面积 (m²)</div></div>
+            <div class="metric-card"><div class="value">{{ project.status }}</div><div class="label">状态</div></div>
+            <div class="metric-card"><div class="value">{{ progress.overall }}%</div><div class="label">总进度</div></div>
+            <div class="metric-card"><div class="value">{{ logs.count }}</div><div class="label">施工日志</div></div>
+        </div>
+    </div>
+
+    <!-- 施工参数 -->
+    <div class="card">
+        <h2 class="section-title">📐 施工参数</h2>
+        <table class="result-table">
+            <tr><th>参数</th><th>数值</th></tr>
+            <tr><td>基层厚度</td><td>{{ project.base_thickness }} mm</td></tr>
+            <tr><td>面层厚度</td><td>{{ project.surface_thickness }} mm</td></tr>
+            <tr><td>检查项进度</td><td>{{ progress.checked_items }} / {{ progress.total_items }}</td></tr>
+            <tr><td>创建时间</td><td>{{ project.created_at }}</td></tr>
+        </table>
+    </div>
+
+    <!-- 各阶段进度 -->
+    <div class="card">
+        <h2 class="section-title">🔍 各阶段进度</h2>
+        <div id="phaseList">
+            {% for phase_name, phase_data in progress.phase_progress.items() %}
+            <div class="phase-row">
+                <div class="phase-name">{{ phase_name }}</div>
+                <div class="phase-bar">
+                    <div class="phase-bar-fill" style="width:{{ phase_data.percent }}%;background:{% if phase_data.percent == 100 %}#27ae60{% elif phase_data.percent > 0 %}#2980b9{% else %}#95a5a6{% endif %};"></div>
+                </div>
+                <div class="phase-pct">{{ phase_data.percent }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 质量检测 -->
+    <div class="card">
+        <h2 class="section-title">✅ 质量检测</h2>
+        <div class="metric-row">
+            <div class="metric-card"><div class="value">{{ quality.total }}</div><div class="label">总检测数</div></div>
+            <div class="metric-card"><div class="value" style="color:#27ae60;">{{ quality.pass_rate }}%</div><div class="label">合格率</div></div>
+            <div class="metric-card"><div class="value" style="color:#e74c3c;">{{ quality.failed }}</div><div class="label">不合格</div></div>
+        </div>
+        {% if quality.recent_tests %}
+        <table class="result-table" style="margin-top:12px;">
+            <tr><th>检测项目</th><th>结果</th><th>日期</th></tr>
+            {% for t in quality.recent_tests %}
+            <tr>
+                <td>{{ t.test_name }}</td>
+                <td>{% if t.is_pass %}<span style="color:#27ae60;">✅ 合格</span>{% else %}<span style="color:#e74c3c;">❌ 不合格</span>{% endif %}</td>
+                <td>{{ t.test_date }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% endif %}
+    </div>
+
+    <!-- 材料与预算 -->
+    <div class="card">
+        <h2 class="section-title">💰 材料与预算</h2>
+        <table class="result-table">
+            <tr><th>项目</th><th>金额</th></tr>
+            <tr><td>材料总成本</td><td>¥{{ materials.total_cost }}</td></tr>
+            <tr><td>预算总额</td><td>¥{{ budget.planned }}</td></tr>
+            <tr><td>实际支出</td><td>¥{{ budget.actual }}</td></tr>
+            <tr><td>预算执行率</td><td>{{ budget.execution_rate }}%</td></tr>
+        </table>
+    </div>
+
+    <div class="footer-text">
+        永颐无机磨石 · 施工管理平台 v4.5.0 | 浙江永颐装饰工程有限公司<br>
+        报告生成时间: {{ generated_at }}
+    </div>
+</main>
+</body>
+</html>
