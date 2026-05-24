@@ -40,6 +40,12 @@ DEFAULT_CONFIG = {
         "backup_interval_days": 7,
         "max_backups": 10,
     },
+    "webhook": {
+        "wechat_url": "",
+        "dingtalk_url": "",
+        "enabled": True,
+        "notify_on": ["phase_update", "safety", "quality_test", "daily_log", "curing_reminder"],
+    },
     "seo": {
         "baidu_tongji_id": "",
         "baidu_verify": "codeva-lVx2jy1w82",

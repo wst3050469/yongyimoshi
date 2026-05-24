@@ -123,6 +123,8 @@ function loadConfig() {
             html += \`<div class="config-row"><span>最大备份数</span><input id="cfg_backup_max" type="number" value="\${config.backup.max_backups||10}"></div>\`;
         }
         div.innerHTML = html || '<p style="color:#999;">加载配置失败</p>';
+        // 异步加载 webhook 配置
+        loadWebhookConfig();
     });
 }
 
@@ -141,6 +143,9 @@ function saveConfig() {
             max_backups: parseInt(document.getElementById('cfg_backup_max')?.value) || 10,
         }
     };
+
+    // 保存 webhook 配置
+    saveWebhookConfig();
 
     let saved = 0;
     Promise.all(Object.entries(updates).map(([section, values]) =>
@@ -425,6 +430,68 @@ function confirmRestore() {
         closeRestoreModal();
         showToast('⚠️ 恢复请求失败: ' + err.message, 'info');
     });
+}
+
+// ===== Webhook 通知配置 =====
+function loadWebhookConfig() {
+    fetch('/api/webhook/config')
+    .then(function(r) { return r.json(); })
+    .then(function(cfg) {
+        var div = document.getElementById('configSection');
+        var html = div.innerHTML;
+        html += '<h4 style="font-size:0.85rem;color:#888;margin-top:8px;">🔔 通知推送 (企业微信/钉钉)</h4>';
+        html += \`<div class="config-row"><span>企业微信 Webhook URL</span><input id="cfg_wechat_url" style="width:200px;text-align:left;" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." value="\${cfg.wechat_url||''}"></div>\`;
+        html += \`<div class="config-row"><span>钉钉 Webhook URL</span><input id="cfg_dingtalk_url" style="width:200px;text-align:left;" placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." value="\${cfg.dingtalk_url||''}"></div>\`;
+        html += \`<div class="config-row"><span>启用通知</span><input id="cfg_webhook_enabled" type="checkbox" \${cfg.enabled ? 'checked' : ''}></div>\`;
+        html += \`<div style="margin-top:4px;"><button class="btn" onclick="testWebhook()" style="font-size:0.8rem;background:#e8f4fd;">📨 测试通知</button></div>\`;
+        div.innerHTML = html;
+    });
+}
+
+function saveWebhookConfig() {
+    var wechatUrl = document.getElementById('cfg_wechat_url')?.value?.trim() || '';
+    var dingtalkUrl = document.getElementById('cfg_dingtalk_url')?.value?.trim() || '';
+    var enabled = document.getElementById('cfg_webhook_enabled')?.checked || false;
+    fetch('/api/webhook/config', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            wechat_url: wechatUrl,
+            dingtalk_url: dingtalkUrl,
+            enabled: enabled
+        })
+    });
+}
+
+function testWebhook() {
+    var btn = event.target;
+    btn.textContent = '⏳ 发送中...';
+    btn.disabled = true;
+    // 先保存当前配置
+    saveWebhookConfig();
+    setTimeout(function() {
+        fetch('/api/webhook/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                title: '🔔 永颐无机磨石 · 测试通知',
+                message: '如果您收到这条消息，说明Webhook配置成功！\n\n---\n永颐无机磨石 · 施工管理平台'
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+            var wechat = result.result?.wechat ? '✅' : '❌';
+            var dingtalk = result.result?.dingtalk ? '✅' : '❌';
+            showToast(\`📨 企业微信:\${wechat} 钉钉:\${dingtalk}\`);
+        })
+        .catch(function(err) {
+            showToast('⚠️ 测试失败: ' + err.message, 'info');
+        })
+        .finally(function() {
+            btn.textContent = '📨 测试通知';
+            btn.disabled = false;
+        });
+    }, 300);
 }
 
 function showToast(msg, type) {

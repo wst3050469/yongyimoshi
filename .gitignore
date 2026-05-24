@@ -27,3 +27,4 @@ data/photos/*
 data/backups/*
 logs/*
 .env.production
+data/system_config.json

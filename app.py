@@ -1276,6 +1276,13 @@ def api_notifications_add():
         message=data.get('message', ''),
         due_date=data.get('due_date', ''),
     )
+    # 自动推送到企业微信/钉钉
+    auto_push_webhook(
+        notif_type=data.get('type', 'manual'),
+        title=data['title'],
+        message=data.get('message', ''),
+        project_name=data.get('project_name', ''),
+    )
     return jsonify({"status": "ok", "id": nid})
 
 
@@ -1328,6 +1335,67 @@ def api_notifications_unread_count():
     return jsonify({"count": len(notifs)})
 
 
+
+# ============================================================
+# Webhook 通知（企业微信/钉钉）
+# ============================================================
+@app.route('/api/webhook/test', methods=['POST'])
+def api_webhook_test():
+    """测试 webhook 配置"""
+    from webhook import send_notification
+    data = request.get_json() or {}
+    title = data.get('title', '🔔 永颐无机磨石 · 测试通知')
+    message = data.get('message', '如果您收到这条消息，说明Webhook配置成功！\n\n---\n永颐无机磨石 · 施工管理平台')
+    result = send_notification(title, message, 'manual', '')
+    return jsonify({"status": "ok", "result": result})
+
+
+@app.route('/api/webhook/config', methods=['GET'])
+def api_webhook_config_get():
+    """获取 webhook 配置"""
+    from config import get_config
+    return jsonify({
+        "wechat_url": get_config("webhook", "wechat_url") or "",
+        "dingtalk_url": get_config("webhook", "dingtalk_url") or "",
+        "enabled": get_config("webhook", "enabled") or True,
+        "notify_on": get_config("webhook", "notify_on") or [],
+    })
+
+
+@app.route('/api/webhook/config', methods=['PUT'])
+def api_webhook_config_update():
+    """更新 webhook 配置"""
+    from config import update_config
+    data = request.get_json()
+    if not data:
+        return api_error("缺少配置数据")
+    updates = {}
+    if "wechat_url" in data:
+        updates["wechat_url"] = data["wechat_url"].strip()
+    if "dingtalk_url" in data:
+        updates["dingtalk_url"] = data["dingtalk_url"].strip()
+    if "enabled" in data:
+        updates["enabled"] = bool(data["enabled"])
+    if "notify_on" in data:
+        updates["notify_on"] = data["notify_on"]
+    update_config("webhook", updates)
+    return jsonify({"status": "ok"})
+
+
+def auto_push_webhook(notif_type: str, title: str, message: str, project_name: str = ""):
+    """自动推送通知到 webhook（内部调用）"""
+    try:
+        from config import get_config
+        enabled = get_config("webhook", "enabled")
+        if not enabled:
+            return
+        notify_on = get_config("webhook", "notify_on") or []
+        if notif_type not in notify_on:
+            return
+        from webhook import send_notification
+        send_notification(title, message, notif_type, project_name)
+    except Exception as e:
+        app.logger.error(f"Webhook 自动推送失败: {e}")
 # ============================================================
 # 设备管理
 # ============================================================
