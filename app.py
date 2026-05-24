@@ -2394,11 +2394,13 @@ def api_reports_export_pdf(pid):
     # 获取项目名称用于文件名
     from database import get_project
     project = get_project(pid)
-    filename = f"项目报告_{project['name'] if project else pid}.pdf"
+    safe_name = f"report_{pid}"
+    if project:
+        safe_name = project['name'][:30].replace(' ', '_')
     
     response = make_response(pdf_data)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}.pdf"'
+    response.headers['Content-Disposition'] = f'attachment; filename="{safe_name}.pdf"'
     return response
 
 
