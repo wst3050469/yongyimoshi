@@ -254,3 +254,35 @@
 | 工序看板前端可视化 | P3 | HTML页面展示阶段流转 |
 | 企业微信/钉钉通知 | P3 | Webhook推送 |
 | 前端SPA渐进增强 | P3 | HTMX或轻量框架 |
+
+---
+
+## v4.3.1 (GEO全面优化 - 全站公共页面增强) ✅ 已提交
+
+### 🆕 GEO增强（6个公共页面统一注入）
+- **📊 百度统计** — 6个页面添加百度统计脚本，使用 `seo_baidu_tongji_id` 模板变量
+- **🧭 BreadcrumbList Schema** — 每个页面添加面包屑导航结构化数据
+- **🏢 Organization+LocalBusiness Schema** — 公司信息（名称/电话/邮箱/地址/服务区域）结构化
+- **📞 Footer增强** — 统一添加电话/邮箱/地址联系方式
+- **🔧 HTML修复** — construction_process.html 修复Schemas在 `</html>` 外的无效结构
+
+### 📁 文件变更
+| 文件 | 变更 | 说明 |
+|------|:----:|------|
+| `templates/public.html` | ✅ 增强 | +百度统计 |
+| `templates/construction_process.html` | ✅ 重构 | 修复Schema位置+新增Breadcrumb/Org/百度统计 |
+| `templates/knowledge-base.html` | ✅ 增强 | +Breadcrumb/Org/百度统计 |
+| `templates/guide-budget.html` | ✅ 增强 | +Breadcrumb/Org/百度统计 |
+| `templates/guide-compare.html` | ✅ 增强 | +Breadcrumb/Org/百度统计 |
+| `templates/guide-maintenance.html` | ✅ 增强 | +Breadcrumb/Org/百度统计 |
+| `app.py` | ✅ 增强 | 全局SEO模板变量注入（未变） |
+| `config.py` | ✅ 增强 | SEO配置（未变） |
+
+### 📈 版本指标
+| 指标 | 值 | 对比v4.3.0 |
+|------|:--:|:----------:|
+| 测试用例 | **112** | ✅ 不变 |
+| 公开展示页面GEO覆盖 | **8/8** | 从2个→全8个 |
+| 百度统计注入页面 | **8个** | 🆕 |
+| BreadcrumbList Schema | **8个** | 🆕 |
+| Organization Schema | **8个** | 🆕 |
