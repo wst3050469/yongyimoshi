@@ -1945,6 +1945,12 @@ def page_guide_budget():
     return render_template('guide-budget.html')
 
 
+@app.route('/knowledge-base')
+def page_knowledge_base():
+    """无机磨石知识百科（无需登录）"""
+    return render_template('knowledge-base.html')
+
+
 @app.route('/robots.txt')
 def robots_txt():
     """搜索引擎爬虫规则"""
@@ -2015,6 +2021,12 @@ def sitemap_xml():
     <lastmod>{today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ai.jinmojianshe.com/platform/knowledge-base</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>
 """, 200, {'Content-Type': 'application/xml; charset=utf-8'}
