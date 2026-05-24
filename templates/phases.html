@@ -128,13 +128,13 @@
             try {
                 const res = await fetch(`/api/projects/${pid}/phases`);
                 const data = await res.json();
-                renderPhases(data.phases);
+                renderPhases(data.phases, pid);
             } catch(e) {
                 showToast('加载工序数据失败', 'error');
             }
         }
 
-        function renderPhases(phases) {
+        function renderPhases(phases, pid) {
             const pipeline = document.getElementById('pipeline');
             const icons = {
                 '基层处理': '🧹', '抗裂砂浆施工': '🧱', '基层养护': '💧',
