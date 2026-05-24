@@ -1927,6 +1927,12 @@ def page_cases():
     return render_template('cases.html')
 
 
+@app.route('/guide-compare')
+def page_guide_compare():
+    """磨石地坪选购指南（无需登录）"""
+    return render_template('guide-compare.html')
+
+
 @app.route('/robots.txt')
 def robots_txt():
     """搜索引擎爬虫规则"""
@@ -1979,6 +1985,12 @@ def sitemap_xml():
     <lastmod>{today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ai.jinmojianshe.com/platform/guide-compare</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
   </url>
 </urlset>
 """, 200, {'Content-Type': 'application/xml; charset=utf-8'}
