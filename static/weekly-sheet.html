@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拍摄单 · 永颐无机磨石</title>
+    <style>
+        @page { size: A4; margin: 10mm; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #333; font-size: 12px; }
+        .page { width: 210mm; padding: 10mm; margin: 0 auto; }
+        h1 { font-size: 18px; color: #1a5276; margin-bottom: 4px; }
+        .sub { color: #888; font-size: 11px; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #1a5276; color: white; padding: 6px 8px; font-size: 11px; text-align: left; }
+        td { border: 1px solid #e0e0e0; padding: 6px 8px; vertical-align: top; font-size: 11px; }
+        .day-header { background: #e8f4fd; font-weight: 600; color: #1a5276; }
+        .acc-a { color: #e74c3c; } .acc-b { color: #f39c12; } .acc-c { color: #27ae60; } .acc-d { color: #2980b9; }
+        .account-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; margin-right: 4px; }
+        .tag-a { background: #fce4ec; color: #e74c3c; }
+        .tag-b { background: #fff8e1; color: #f39c12; }
+        .tag-c { background: #e8f5e9; color: #27ae60; }
+        .tag-d { background: #e3f2fd; color: #2980b9; }
+        .hook { margin-top: 2px; font-weight: 500; }
+        .status-box { display: inline-block; width: 16px; height: 16px; border: 2px solid #ddd; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
+        .footer { margin-top: 16px; text-align: center; color: #aaa; font-size: 10px; }
+        .legend { display: flex; gap: 16px; margin: 8px 0 12px; flex-wrap: wrap; }
+        .legend span { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+        @media print { .no-print { display: none; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+        .actions { margin: 12px 0; display: flex; gap: 8px; }
+        .btn { padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .btn-primary { background: #1a5276; color: white; }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="no-print actions">
+            <button class="btn btn-primary" onclick="window.print()">🖨️ 打印拍摄单</button>
+            <button class="btn" onclick="loadData()" style="border:1px solid #ddd;">🔄 加载最新排期</button>
+        </div>
+
+        <h1>📋 永颐无机磨石 · 本周拍摄单</h1>
+        <div class="sub" id="weekLabel">加载中...</div>
+        
+        <div class="legend">
+            <span><span class="account-tag tag-a">🔴 A</span> 行业专家</span>
+            <span><span class="account-tag tag-b">🟡 B</span> 工地实拍</span>
+            <span><span class="account-tag tag-c">🟢 C</span> 知识科普</span>
+            <span><span class="account-tag tag-d">🔵 D</span> 工具种草</span>
+            <span style="margin-left:auto;"><span class="status-box"></span> 拍完后打勾 ✓</span>
+        </div>
+
+        <table id="sheetTable">
+            <thead><tr><th style="width:60px;">日期</th><th>🔴 号A·专家</th><th>🟡 号B·工地</th><th>🟢 号C·科普</th><th>🔵 号D·工具</th></tr></thead>
+            <tbody id="sheetBody"><tr><td colspan="5" style="text-align:center;padding:20px;color:#999;">加载中...</td></tr></tbody>
+        </table>
+        <div class="footer">永颐无机磨石 · 施工管理平台 v4.4.1 · 打印日期: <span id="printDate"></span></div>
+    </div>
+
+    <script>
+        const ACC_KEYS = ['A','B','C','D'];
+        const ACC_NAMES = {A:'行业专家', B:'工地实拍', C:'知识科普', D:'工具种草'};
+        const ACC_COLORS = {A:'tag-a', B:'tag-b', C:'tag-c', D:'tag-d'};
+
+        function loadData() {
+            document.getElementById('weekLabel').textContent = '⏳ 加载排期中...';
+            
+            fetch('/api/content/plan-preview').then(r=>r.json()).then(data => {
+                if (!data.has_plan) {
+                    document.getElementById('weekLabel').textContent = '⚠️ 暂无排期，请先生成';
+                    return;
+                }
+                
+                // Parse the preview text to extract hooks
+                const lines = (data.next_day_preview || '').split('\n');
+                const days = [];
+                let currentDay = null;
+                let currentAcc = -1;
+                
+                lines.forEach(line => {
+                    const dayMatch = line.match(/^## (.+) \((\d+)\/(\d+)\)/);
+                    if (dayMatch) {
+                        currentDay = {name: dayMatch[1], date: `${dayMatch[2]}/${dayMatch[3]}`, slots: {}};
+                        days.push(currentDay);
+                        currentAcc = -1;
+                        return;
+                    }
+                    if (line.includes('号') && line.includes('·')) {
+                        currentAcc = line.includes('🔴') ? 0 : line.includes('🟡') ? 1 : line.includes('🟢') ? 2 : line.includes('🔵') ? 3 : -1;
+                        return;
+                    }
+                    if (line.includes('【钩子】') && currentDay && currentAcc >= 0) {
+                        currentDay.slots[ACC_KEYS[currentAcc]] = line.replace('【钩子】','').trim();
+                    }
+                });
+
+                if (days.length === 0) {
+                    // Fallback: generate default
+                    for (let i = 0; i < 7; i++) {
+                        const names = ['周一','周二','周三','周四','周五','周六','周日'];
+                        const now = new Date();
+                        const day = now.getDay() || 7;
+                        const monday = new Date(now);
+                        monday.setDate(now.getDate() - day + 1 + i);
+                        days.push({
+                            name: names[i], 
+                            date: `${monday.getMonth()+1}/${monday.getDate()}`,
+                            slots: {}
+                        });
+                    }
+                }
+
+                renderSheet(days);
+                document.getElementById('weekLabel').textContent = `📅 本周排期 · ${days.length}天 · ${data.total_scripts}条脚本`;
+                document.getElementById('printDate').textContent = new Date().toLocaleDateString('zh-CN');
+            }).catch(() => {
+                document.getElementById('weekLabel').textContent = '❌ 加载失败';
+            });
+        }
+
+        function renderSheet(days) {
+            const tbody = document.getElementById('sheetBody');
+            tbody.innerHTML = days.map(day => {
+                const dateObj = new Date();
+                const [m,d] = day.date.split('/');
+                dateObj.setMonth(parseInt(m)-1);
+                dateObj.setDate(parseInt(d));
+                const isPast = dateObj < new Date(new Date().toDateString());
+                
+                return `<tr${isPast ? ' style="opacity:0.5;"' : ''}>
+                    <td class="day-header">${day.name}<br><span style="font-weight:400;font-size:10px;">${day.date}</span></td>
+                    ${ACC_KEYS.map(key => {
+                        const hook = day.slots[key] || '';
+                        return `<td>
+                            <span class="account-tag ${ACC_COLORS[key]}">${key === 'A' ? '🔴' : key === 'B' ? '🟡' : key === 'C' ? '🟢' : '🔵'} ${ACC_NAMES[key]}</span>
+                            ${hook ? `<div class="hook">📌 ${hook}</div>` : '<div style="color:#ccc;font-size:10px;">待定</div>'}
+                            <div style="margin-top:4px;"><span class="status-box"></span></div>
+                        </td>`;
+                    }).join('')}
+                </tr>`;
+            }).join('');
+        }
+
+        loadData();
+    </script>
+</body>
+</html>

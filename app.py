@@ -1686,6 +1686,11 @@ def content_calendar_page():
     """内容日历页面"""
     return app.send_static_file('content-calendar.html')
 
+@app.route('/weekly-sheet')
+def weekly_sheet_page():
+    """打印版拍摄单"""
+    return app.send_static_file('weekly-sheet.html')
+
 # 设备管理
 # ============================================================
 
