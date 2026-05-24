@@ -1636,6 +1636,50 @@ def health_check():
     }), status_code
 
 
+@app.route('/api/content/plan-preview', methods=['GET'])
+def api_content_plan_preview():
+    """获取最新内容排期预览"""
+    import os
+    content_dir = os.path.join(os.path.dirname(__file__), 'docs', 'content')
+    if not os.path.exists(content_dir):
+        return jsonify({"status": "error", "message": "无排期文件"})
+    
+    files = [f for f in os.listdir(content_dir) if f.startswith('week-') and f.endswith('.md')]
+    files.sort(reverse=True)
+    
+    if not files:
+        return jsonify({"status": "ok", "has_plan": False, "message": "暂无排期，请先生成"})
+    
+    latest = files[0]
+    with open(os.path.join(content_dir, latest), 'r') as f:
+        content_text = f.read()
+    
+    # 统计各账号脚本数
+    lines = content_text.split('\n')
+    days = sum(1 for l in lines if l.startswith('## '))
+    script_count = content_text.count('### 🔴') + content_text.count('### 🟡') + content_text.count('### 🟢') + content_text.count('### 🔵')
+    
+    # 提取明日内容预览（如果有）
+    preview_lines = []
+    in_first_day = False
+    for l in lines:
+        if l.startswith('## ') and not in_first_day:
+            in_first_day = True
+            preview_lines.append(l)
+        elif l.startswith('## ') and in_first_day:
+            break
+        elif in_first_day:
+            preview_lines.append(l)
+    
+    return jsonify({
+        "status": "ok",
+        "has_plan": True,
+        "file": latest,
+        "total_scripts": script_count,
+        "total_days": days,
+        "next_day_preview": "\n".join(preview_lines[:20]),
+    })
+
 # 设备管理
 # ============================================================
 

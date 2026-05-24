@@ -69,6 +69,7 @@
                 <button class="btn" onclick="generateContentPlan()" style="background:#fff8e1;color:#f57f17;">📅 生成下周排期</button>
             </div>
             <div id="seoResult" style="margin-top:8px;font-size:0.85rem;color:#666;"></div>
+            <div id="planPreview" style="margin-top:8px;"></div>
         </div>
         </div>
     </div>
@@ -512,6 +513,45 @@ function testWebhook() {
 // ===== SEO/内容监控 =====
 function loadSeoStatus() {
     fetch('/api/seo/status')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var div = document.getElementById('seoStats');
+        var wechatDot = data.webhook.wechat ? '🟢' : '⚪';
+        var dingtalkDot = data.webhook.dingtalk ? '🟢' : '⚪';
+        var pushDot = data.baidu_push_configured ? '🟢' : '⚪';
+        div.innerHTML = \\`
+            <div><div class="stat-number-lg">\${data.sitemap_urls}</div><div style="font-size:0.8rem;color:#888;">Sitemap URLs</div></div>
+            <div><div class="stat-number-lg">\${data.content_plans}</div><div style="font-size:0.8rem;color:#888;">内容排期</div></div>
+            <div><div class="stat-number-lg">\${data.backup_count}</div><div style="font-size:0.8rem;color:#888;">备份文件</div></div>
+            <div><div class="stat-number-lg" style="font-size:1.2rem;">\${pushDot} \${wechatDot} \${dingtalkDot}</div><div style="font-size:0.8rem;color:#888;">推送·微信·钉钉</div></div>
+        \\`;
+        document.getElementById('seoResult').innerHTML = '<span style="color:#888;">上次推送: ' + (data.last_push_log || '暂无') + '</span>';
+    });
+    // 加载排期预览
+    loadPlanPreview();
+}
+
+function loadPlanPreview() {
+    fetch('/api/content/plan-preview')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var el = document.getElementById('planPreview');
+        if (!el) return;
+        if (!data.has_plan) {
+            el.innerHTML = '<p style="color:#999;font-size:0.85rem;">暂无排期，点击上方按钮生成</p>';
+            return;
+        }
+        var preview = data.next_day_preview || '';
+        el.innerHTML = \\`
+            <p style="font-size:0.9rem;color:#1a5276;font-weight:600;">📅 本周排期: \${data.total_days}天 \${data.total_scripts}条脚本</p>
+            <pre style="background:#f8f9fa;padding:10px;border-radius:8px;font-size:0.8rem;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;">\${preview}</pre>
+        \\`;
+    })
+    .catch(function() {
+        var el = document.getElementById('planPreview');
+        if (el) el.innerHTML = '<p style="color:#999;font-size:0.85rem;">加载失败</p>';
+    });
+}
     .then(function(r) { return r.json(); })
     .then(function(data) {
         var div = document.getElementById('seoStats');
