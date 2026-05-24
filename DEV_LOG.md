@@ -286,3 +286,43 @@
 | 百度统计注入页面 | **8个** | 🆕 |
 | BreadcrumbList Schema | **8个** | 🆕 |
 | Organization Schema | **8个** | 🆕 |
+
+---
+
+## v4.3.2 (生产部署体系 - systemd + logrotate + 健康检查) ✅ 已发布
+
+### 🏭 生产环境基础设施
+- **⚙️ systemd 系统服务** (`yongyi-terrazzo.service`)
+  - 开机自启 (`systemctl enable`)
+  - 崩溃自动重启（5秒延迟）
+  - 热重载支持 (`systemctl reload` = `kill -HUP`)
+  - 环境变量文件隔离（`.env.production`，不提交到Git）
+- **📝 logrotate 日志轮转**
+  - 每日轮转，保留30天
+  - 自动压缩，日期后缀
+  - 平滑切换（copytruncate）
+- **💓 健康检查** (每5分钟 via cron)
+  - 检测 HTTPS 200 响应
+  - 异常自动重启并记录日志
+- **🚀 deploy.sh 升级 v4.3.1**
+  - 支持 `start|stop|restart|reload|status|logs|install|git-push`
+  - 统一管理入口
+
+### 📁 文件变更
+| 文件 | 变更 | 说明 |
+|------|:----:|------|
+| `/etc/systemd/system/yongyi-terrazzo.service` | 🆕 新建 | 系统服务（开机自启） |
+| `/etc/logrotate.d/yongyi-terrazzo` | 🆕 新建 | 日志轮转（30天） |
+| `scripts/healthcheck.sh` | 🆕 新建 | 健康检查+自动恢复 |
+| `deploy.sh` | ✅ 重写 | v4.3.1，多命令支持 |
+| `crontab` | ✅ 添加 | 每5分钟健康检查 |
+
+### 📈 版本指标
+| 指标 | 值 | 对比v4.3.1 |
+|------|:--:|:----------:|
+| 测试用例 | **112** | ✅ 不变 |
+| Gunicorn Workers | **2** | 从1升级 |
+| 系统服务 | **systemd** | 🆕 从裸进程升级 |
+| 日志保留 | **30天** | 🆕 |
+| 健康检查 | **每5分钟** | 🆕 |
+| 自愈能力 | **自动重启** | 🆕 |
