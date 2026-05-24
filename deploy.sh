@@ -1,89 +1,78 @@
 #!/bin/bash
 # ============================================
 # 永颐无机磨石 · 施工管理平台
-# 一键部署脚本 (支持Docker和直接运行)
+# 一键部署脚本 (v4.3.1)
 # ============================================
 set -e
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-PORT=${1:-5000}
-MODE=${2:-auto}
+ACTION=${1:-status}
 
 echo "=============================="
 echo " 永颐无机磨石 · 施工管理平台"
-echo " 版本: v3.7.0"
+echo " 版本: v4.3.1"
 echo "=============================="
 
-# 检测Docker
-if [ "$MODE" = "docker" ] || ([ "$MODE" = "auto" ] && command -v docker &>/dev/null); then
-    echo "🐳 使用 Docker 部署..."
-    cd "$APP_DIR"
-    docker compose up -d --build
-    echo "✅ Docker 部署完成!"
-    echo "   地址: http://localhost:$PORT"
-    exit 0
-fi
-
-# 直接运行模式
-echo "🔍 检查环境..."
-
-# Python检查
-PYTHON=$(command -v python3 || command -v python)
-if [ -z "$PYTHON" ]; then echo "❌ 需要 Python 3.10+"; exit 1; fi
-
-# 依赖检查
-if ! $PYTHON -c "import flask" 2>/dev/null; then
-    echo "📦 安装依赖..."
-    pip3 install flask gunicorn -q
-fi
-
-# 端口检查
-if lsof -ti:$PORT &>/dev/null 2>&1; then
-    echo "⚠️  端口 $PORT 已被占用，正在释放..."
-    fuser -k $PORT/tcp 2>/dev/null || true
-    sleep 1
-fi
-
-# 初始化目录
-mkdir -p "${APP_DIR}/data/photos" "${APP_DIR}/data/backups" "${APP_DIR}/logs"
-
-# 数据库优化
-echo "🗄️  优化数据库..."
-$PYTHON -c "
-from database import optimize_database, init_db
-init_db()
-result = optimize_database()
-print(f'   索引已优化: {result[\"indexes_created\"]}个')
-"
-
-# 启动
-echo "🚀 启动服务 (端口: $PORT)..."
-cd "$APP_DIR"
-gunicorn -w 2 \
-    -b 0.0.0.0:$PORT \
-    --daemon \
-    --pid "${APP_DIR}/.app.pid" \
-    --error-logfile "${APP_DIR}/logs/error.log" \
-    --access-logfile "${APP_DIR}/logs/access.log" \
-    --timeout 60 \
-    app:app
-
-sleep 2
-
-if lsof -ti:$PORT &>/dev/null 2>&1; then
-    echo "✅ 服务启动成功！"
-    echo "   地址: http://localhost:$PORT"
-    echo "   API文档: http://localhost:$PORT/api/docs-page"
-    echo "   PID: $(cat ${APP_DIR}/.app.pid 2>/dev/null || lsof -ti:$PORT)"
-else
-    echo "❌ 启动失败，请查看日志: ${APP_DIR}/logs/error.log"
+case "$ACTION" in
+  start)
+    echo "🚀 启动服务..."
+    systemctl start yongyi-terrazzo
+    systemctl status yongyi-terrazzo --no-pager
+    ;;
+  stop)
+    echo "🛑 停止服务..."
+    systemctl stop yongyi-terrazzo
+    echo "✅ 已停止"
+    ;;
+  restart)
+    echo "🔄 重启服务..."
+    systemctl restart yongyi-terrazzo
+    systemctl status yongyi-terrazzo --no-pager
+    ;;
+  reload)
+    echo "🔄 热重载（无中断）..."
+    systemctl reload yongyi-terrazzo || kill -HUP $(cat /run/yongyi-terrazzo.pid 2>/dev/null)
+    echo "✅ 已重载"
+    ;;
+  status)
+    echo "📊 服务状态:"
+    systemctl status yongyi-terrazzo --no-pager 2>/dev/null || echo "❌ 服务未安装"
+    echo ""
+    echo "📡 端口监听:"
+    ss -tlnp | grep -E "5000|80|443" || echo "未监听"
+    echo ""
+    echo "🌐 公网访问测试:"
+    curl -s -o /dev/null -w "   https://ai.jinmojianshe.com/platform/ → %{http_code}\n" https://ai.jinmojianshe.com/platform/ 2>/dev/null || echo "   ❌ 无法访问"
+    ;;
+  logs)
+    echo "📋 最近50行日志:"
+    tail -50 /var/log/yongyi-terrazzo/error.log
+    ;;
+  install)
+    echo "🔧 安装系统服务..."
+    cp "$APP_DIR/.env.example" "$APP_DIR/.env.production" 2>/dev/null || true
+    systemctl daemon-reload
+    systemctl enable yongyi-terrazzo
+    systemctl start yongyi-terrazzo
+    echo "✅ 安装完成！"
+    ;;
+  git-push)
+    echo "📤 推送到 GitHub..."
+    if git remote -v | grep -q origin; then
+      git push origin main
+      echo "✅ 推送成功！"
+    else
+      echo "❌ 未配置 Git 远程仓库"
+      echo "   请先执行: git remote add origin <仓库地址>"
+    fi
+    ;;
+  *)
+    echo "用法: $0 {start|stop|restart|reload|status|logs|install|git-push}"
+    echo ""
+    echo "示例:"
+    echo "  $0 status    # 查看服务状态"
+    echo "  $0 restart   # 重启服务"
+    echo "  $0 logs      # 查看错误日志"
     exit 1
-fi
-
-echo ""
-echo "📋 功能面板:"
-echo "   📐 材料计算  📦 采购清单  📅 进度计划"
-echo "   ✅ 检查清单  📝 施工日志  📸 照片墙"
-echo "   📦 库存管理  📊 进度看板  📋 技术参数"
-echo ""
-echo "🛑 停止: kill \$(cat ${APP_DIR}/.app.pid)"
+    ;;
+esac
