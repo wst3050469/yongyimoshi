@@ -1624,10 +1624,12 @@ def health_check():
         pass
     
     status_code = 200 if db_ok else 503
+    from config import load_config
+    _config = load_config()
     return jsonify({
         "status": "ok" if db_ok else "error",
         "app": "yongyi-terrazzo",
-        "version": "4.4.1",
+        "version": _config["system"]["version"],
         "database": "connected" if db_ok else "disconnected",
         "database_size_mb": round(db_size / (1024 * 1024), 2) if db_size else 0,
         "uptime": uptime,
