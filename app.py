@@ -1583,6 +1583,59 @@ def api_content_plan():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+# ============================================================
+# 健康检查端点（用于负载均衡/监控系统）
+# ============================================================
+@app.route('/health')
+@app.route('/api/health')
+def health_check():
+    """健康检查 - 用于监控系统和服务发现"""
+    import datetime
+    
+    # 检查数据库
+    db_ok = False
+    db_size = 0
+    try:
+        from database import get_db, check_database_integrity
+        conn = get_db()
+        conn.execute("SELECT 1").fetchone()
+        db_ok = True
+        
+        # 数据库大小
+        import os
+        db_path = os.path.join(os.path.dirname(__file__), 'data', 'yongyi.db')
+        if os.path.exists(db_path):
+            db_size = os.path.getsize(db_path)
+        
+        conn.close()
+    except Exception as e:
+        db_ok = False
+    
+    # 系统运行时间
+    import os
+    uptime = "unknown"
+    try:
+        with open('/proc/uptime', 'r') as f:
+            uptime_seconds = float(f.read().split()[0])
+            days = int(uptime_seconds // 86400)
+            hours = int((uptime_seconds % 86400) // 3600)
+            uptime = f"{days}d {hours}h"
+    except:
+        pass
+    
+    status_code = 200 if db_ok else 503
+    return jsonify({
+        "status": "ok" if db_ok else "error",
+        "app": "yongyi-terrazzo",
+        "version": "4.4.1",
+        "database": "connected" if db_ok else "disconnected",
+        "database_size_mb": round(db_size / (1024 * 1024), 2) if db_size else 0,
+        "uptime": uptime,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "endpoints": len([r for r in app.url_map.iter_rules() if not r.rule.startswith('/static')])
+    }), status_code
+
+
 # 设备管理
 # ============================================================
 
