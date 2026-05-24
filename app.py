@@ -1680,6 +1680,12 @@ def api_content_plan_preview():
         "next_day_preview": "\n".join(preview_lines[:20]),
     })
 
+
+@app.route('/content-calendar')
+def content_calendar_page():
+    """内容日历页面"""
+    return app.send_static_file('content-calendar.html')
+
 # 设备管理
 # ============================================================
 

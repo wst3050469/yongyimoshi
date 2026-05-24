@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>内容日历 · 永颐无机磨石</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f0f2f5; color:#333; padding:20px; }
+        .header { max-width:1200px; margin:0 auto 20px; }
+        .header h1 { font-size:1.5rem; color:#1a5276; }
+        .header p { color:#888; font-size:0.85rem; margin-top:4px; }
+        .week-grid { max-width:1200px; margin:0 auto; display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+        .day-card { background:white; border-radius:12px; padding:12px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+        .day-card .day-name { font-size:0.85rem; font-weight:600; color:#1a5276; margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid #e8f4fd; }
+        .day-card .date { font-size:0.75rem; color:#999; margin-bottom:8px; }
+        .slot { padding:6px 8px; border-radius:6px; margin-bottom:4px; font-size:0.75rem; cursor:pointer; transition:all 0.2s; }
+        .slot:hover { transform:translateX(2px); }
+        .slot-a { background:#fce4ec; border-left:3px solid #e74c3c; }
+        .slot-b { background:#fff8e1; border-left:3px solid #f39c12; }
+        .slot-c { background:#e8f5e9; border-left:3px solid #27ae60; }
+        .slot-d { background:#e3f2fd; border-left:3px solid #2980b9; }
+        .slot .account { font-weight:600; font-size:0.7rem; }
+        .slot .hook { margin-top:2px; color:#555; }
+        .slot .status { float:right; font-size:0.7rem; }
+        .slot.done { opacity:0.6; }
+        .controls { max-width:1200px; margin:16px auto; display:flex; gap:8px; flex-wrap:wrap; }
+        .btn { padding:8px 16px; border:none; border-radius:8px; cursor:pointer; font-size:0.85rem; }
+        .btn-primary { background:#1a5276; color:white; }
+        .btn-success { background:#27ae60; color:white; }
+        .legend { max-width:1200px; margin:16px auto; display:flex; gap:16px; font-size:0.8rem; color:#666; }
+        .legend span { display:flex; align-items:center; gap:4px; }
+        .legend .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+        @media (max-width:768px) { .week-grid { grid-template-columns:repeat(1,1fr); } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📅 内容日历 · 4号矩阵</h1>
+        <p>追踪每日发布进度 · 点击标记已发布</p>
+    </div>
+    <div class="controls">
+        <button class="btn btn-primary" onclick="loadWeek()">🔄 加载本周</button>
+        <button class="btn btn-success" onclick="generateWeek()">✨ 生成下周排期</button>
+        <span style="margin-left:12px;font-size:0.85rem;color:#888;line-height:34px;" id="statusText"></span>
+    </div>
+    <div class="legend">
+        <span><span class="dot" style="background:#e74c3c;"></span> 号A·专家</span>
+        <span><span class="dot" style="background:#f39c12;"></span> 号B·工地</span>
+        <span><span class="dot" style="background:#27ae60;"></span> 号C·科普</span>
+        <span><span class="dot" style="background:#2980b9;"></span> 号D·工具</span>
+    </div>
+    <div class="week-grid" id="weekGrid"><p style="grid-column:1/-1;text-align:center;color:#999;padding:40px;">加载中...</p></div>
+
+    <script>
+        const ACCOUNTS = [
+            {id:'A',name:'专家',emoji:'🔴',cls:'slot-a'},
+            {id:'B',name:'工地',emoji:'🟡',cls:'slot-b'},
+            {id:'C',name:'科普',emoji:'🟢',cls:'slot-c'},
+            {id:'D',name:'工具',emoji:'🔵',cls:'slot-d'}
+        ];
+        const DAY_NAMES = ['周一','周二','周三','周四','周五','周六','周日'];
+
+        function getWeekDates() {
+            const now = new Date();
+            const day = now.getDay() || 7;
+            const monday = new Date(now);
+            monday.setDate(now.getDate() - day + 1);
+            return DAY_NAMES.map((name,i) => {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                return {name, date: `${d.getMonth()+1}/${d.getDate()}`, iso: d.toISOString().slice(0,10)};
+            });
+        }
+
+        function loadWeek() {
+            const grid = document.getElementById('weekGrid');
+            const days = getWeekDates();
+            const posted = JSON.parse(localStorage.getItem('content_calendar') || '{}');
+            
+            grid.innerHTML = days.map(day => {
+                const dayPosted = posted[day.iso] || {};
+                return `<div class="day-card">
+                    <div class="day-name">${day.name}</div>
+                    <div class="date">${day.date}</div>
+                    ${ACCOUNTS.map(acc => {
+                        const isDone = dayPosted[acc.id];
+                        return `<div class="slot ${acc.cls} ${isDone?'done':''}" onclick="togglePosted('${day.iso}','${acc.id}')">
+                            <span class="account">${acc.emoji} ${acc.name}</span>
+                            <span class="status">${isDone ? '✅' : '⏳'}</span>
+                            <div class="hook">${isDone ? '已发布' : '待发布'}</div>
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }).join('');
+            updateStats(posted);
+        }
+
+        function togglePosted(iso, accId) {
+            const posted = JSON.parse(localStorage.getItem('content_calendar') || '{}');
+            if (!posted[iso]) posted[iso] = {};
+            posted[iso][accId] = !posted[iso][accId];
+            localStorage.setItem('content_calendar', JSON.stringify(posted));
+            loadWeek();
+        }
+
+        function updateStats(posted) {
+            const total = Object.values(posted).reduce((sum, day) => sum + Object.keys(day).length, 0);
+            document.getElementById('statusText').textContent = `📊 本周已发布 ${total}/28 条`;
+        }
+
+        function generateWeek() {
+            document.getElementById('statusText').textContent = '⏳ 正在生成...';
+            fetch('/api/content/plan', {method:'POST'}).then(r=>r.json()).then(d => {
+                document.getElementById('statusText').textContent = d.status === 'ok' ? `✅ 已生成 ${d.count} 条脚本` : '⚠️ 生成失败';
+            }).catch(() => {
+                document.getElementById('statusText').textContent = '⚠️ 请求失败';
+            });
+        }
+
+        loadWeek();
+    </script>
+</body>
+</html>
