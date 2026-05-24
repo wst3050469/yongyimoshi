@@ -15,7 +15,7 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, 'system_config.json')
 DEFAULT_CONFIG = {
     "system": {
         "name": "永颐无机磨石 · 施工管理平台",
-        "version": "4.2.0",
+        "version": "4.4.1",
         "company": "浙江永颐装饰工程有限公司",
         "maintainer": "",
         "language": "zh-CN",
@@ -48,6 +48,7 @@ DEFAULT_CONFIG = {
     },
     "seo": {
         "baidu_tongji_id": "",
+        "baidu_push_token": "Wv8PCYReXqOVNXYg",
         "baidu_verify": "codeva-lVx2jy1w82",
         "bing_verify": "",
         "company_telephone": "13357048951",

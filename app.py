@@ -1397,6 +1397,126 @@ def auto_push_webhook(notif_type: str, title: str, message: str, project_name: s
     except Exception as e:
         app.logger.error(f"Webhook 自动推送失败: {e}")
 # ============================================================
+
+# ============================================================
+# 百度站长推送
+# ============================================================
+@app.route('/api/seo/push', methods=['POST'])
+def api_seo_push():
+    """手动触发百度站长推送"""
+    try:
+        from config import get_config
+        import urllib.request
+        
+        token = get_config("seo", "baidu_push_token")
+        if not token:
+            return jsonify({"status": "error", "message": "未配置百度推送Token"})
+        
+        site = "https://ai.jinmojianshe.com"
+        baidu_api = f"http://data.zz.baidu.com/urls?site={site}&token={token}"
+        
+        # 获取当前sitemap中的URL
+        sitemap_resp = urllib.request.urlopen(f"{site}/platform/sitemap.xml", timeout=10)
+        sitemap_xml = sitemap_resp.read().decode('utf-8')
+        
+        import re
+        urls = re.findall(r'<loc>(.*?)</loc>', sitemap_xml)
+        
+        if not urls:
+            return jsonify({"status": "error", "message": "Sitemap中未找到URL"})
+        
+        # 推送到百度
+        data = "\n".join(urls).encode('utf-8')
+        req = urllib.request.Request(
+            baidu_api,
+            data=data,
+            headers={'Content-Type': 'text/plain'},
+            method='POST'
+        )
+        resp = urllib.request.urlopen(req, timeout=30)
+        result = resp.read().decode('utf-8')
+        
+        return jsonify({
+            "status": "ok",
+            "pushed": len(urls),
+            "result": result
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+
+@app.route('/api/seo/status', methods=['GET'])
+def api_seo_status():
+    """获取SEO/内容状态概览"""
+    import os
+    from config import get_config
+    from datetime import datetime
+    
+    # Sitemap中的URL数
+    sitemap_count = 0
+    try:
+        import urllib.request
+        import re
+        resp = urllib.request.urlopen("https://ai.jinmojianshe.com/platform/sitemap.xml", timeout=5)
+        xml = resp.read().decode('utf-8')
+        sitemap_count = len(re.findall(r'<loc>', xml))
+    except:
+        try:
+            # 直接生成
+            resp = urllib.request.urlopen("http://localhost:5000/sitemap.xml", timeout=5)
+            xml = resp.read().decode('utf-8')
+            sitemap_count = len(re.findall(r'<loc>', xml))
+        except:
+            sitemap_count = 0
+    
+    # 内容计划文件
+    content_dir = os.path.join(os.path.dirname(__file__), 'docs', 'content')
+    plan_files = []
+    if os.path.exists(content_dir):
+        plan_files = [f for f in os.listdir(content_dir) if f.endswith('.md')]
+    
+    # 备份状态
+    backup_dir = os.path.join(os.path.dirname(__file__), 'data', 'backups')
+    backup_count = 0
+    if os.path.exists(backup_dir):
+        backup_count = len([f for f in os.listdir(backup_dir) if f.endswith('.db')])
+    
+    # Webhook配置
+    wechat_configured = bool(get_config("webhook", "wechat_url"))
+    dingtalk_configured = bool(get_config("webhook", "dingtalk_url"))
+    webhook_enabled = bool(get_config("webhook", "enabled"))
+    
+    return jsonify({
+        "version": get_config("system", "version") or "4.4.1",
+        "sitemap_urls": sitemap_count,
+        "content_plans": len(plan_files),
+        "backup_count": backup_count,
+        "webhook": {
+            "wechat": wechat_configured,
+            "dingtalk": dingtalk_configured,
+            "enabled": webhook_enabled
+        },
+        "baidu_push_configured": bool(get_config("seo", "baidu_push_token")),
+        "last_push_log": _get_last_push_time(),
+        "time": datetime.now().strftime('%Y-%m-%d %H:%M')
+    })
+
+
+def _get_last_push_time():
+    """获取最近一次百度推送时间"""
+    import os
+    log_file = "/var/log/yongyi-terrazzo/push.log"
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, 'r') as f:
+                lines = f.readlines()
+            for line in reversed(lines):
+                if '推送' in line or '完成' in line:
+                    return line.strip()[:50]
+        except:
+            pass
+    return "暂无记录"
+
 # 设备管理
 # ============================================================
 

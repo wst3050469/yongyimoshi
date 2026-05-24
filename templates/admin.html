@@ -57,6 +57,20 @@
             <h3 style="margin-top:16px;font-size:0.9rem;">📋 数据库表状态</h3>
             <div id="dbTables"></div>
         </div>
+
+        <!-- SEO/内容状态 -->
+        <div class="card">
+            <h2>🌐 内容与SEO状态</h2>
+            <div id="seoStats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;text-align:center;">
+                <div>加载中...</div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn" onclick="pushToBaidu()" style="background:#e8f4fd;color:#1a5276;">📤 推送到百度</button>
+                <button class="btn" onclick="generateContentPlan()" style="background:#fff8e1;color:#f57f17;">📅 生成下周排期</button>
+            </div>
+            <div id="seoResult" style="margin-top:8px;font-size:0.85rem;color:#666;"></div>
+        </div>
+        </div>
     </div>
 
     <!-- 批量项目管理 -->
@@ -287,6 +301,7 @@ function cleanupData() {
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     loadSystemStatus();
+    loadSeoStatus();
 });
 
 // ===== 项目导入 =====
@@ -492,6 +507,72 @@ function testWebhook() {
             btn.disabled = false;
         });
     }, 300);
+}
+
+// ===== SEO/内容监控 =====
+function loadSeoStatus() {
+    fetch('/api/seo/status')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var div = document.getElementById('seoStats');
+        var wechatDot = data.webhook.wechat ? '🟢' : '⚪';
+        var dingtalkDot = data.webhook.dingtalk ? '🟢' : '⚪';
+        var pushDot = data.baidu_push_configured ? '🟢' : '⚪';
+        div.innerHTML = \\`
+            <div><div class="stat-number-lg">\${data.sitemap_urls}</div><div style="font-size:0.8rem;color:#888;">Sitemap URLs</div></div>
+            <div><div class="stat-number-lg">\${data.content_plans}</div><div style="font-size:0.8rem;color:#888;">内容排期</div></div>
+            <div><div class="stat-number-lg">\${data.backup_count}</div><div style="font-size:0.8rem;color:#888;">备份文件</div></div>
+            <div><div class="stat-number-lg" style="font-size:1.2rem;">\${pushDot} \${wechatDot} \${dingtalkDot}</div><div style="font-size:0.8rem;color:#888;">推送·微信·钉钉</div></div>
+        \\`;
+        document.getElementById('seoResult').innerHTML = '<span style="color:#888;">上次推送: ' + (data.last_push_log || '暂无') + '</span>';
+    });
+}
+
+function pushToBaidu() {
+    var btn = event.target;
+    btn.textContent = '⏳ 推送中...';
+    btn.disabled = true;
+    document.getElementById('seoResult').innerHTML = '⏳ 正在推送到百度...';
+    fetch('/api/seo/push', {method: 'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'ok') {
+            document.getElementById('seoResult').innerHTML = \\`✅ 已推送 \${data.pushed} 个URL到百度 \${data.result}\`;
+        } else {
+            document.getElementById('seoResult').innerHTML = '⚠️ ' + (data.message || '推送失败');
+        }
+    })
+    .catch(function(err) {
+        document.getElementById('seoResult').innerHTML = '❌ 网络错误';
+    })
+    .finally(function() {
+        btn.textContent = '📤 推送到百度';
+        btn.disabled = false;
+    });
+}
+
+function generateContentPlan() {
+    var btn = event.target;
+    btn.textContent = '⏳ 生成中...';
+    btn.disabled = true;
+    fetch('/api/content/plan', {method: 'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'ok') {
+            showToast(\\`✅ 已生成 \${data.count} 条脚本排期\`);
+            loadSeoStatus();
+        } else {
+            showToast('⚠️ ' + (data.message || '生成失败'), 'info');
+        }
+    })
+    .catch(function() {
+        // 本地生成
+        showToast('📅 请通过脚本生成: python3 scripts/content_planner.py', 'info');
+    })
+    .finally(function() {
+        btn.textContent = '📅 生成下周排期';
+        btn.disabled = false;
+    });
 }
 
 function showToast(msg, type) {
