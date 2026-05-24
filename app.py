@@ -35,6 +35,26 @@ import json
 import os
 
 app = Flask(__name__)
+
+# ============================================================
+# 全局模板上下文 - SEO/GEO 配置注入
+# ============================================================
+@app.context_processor
+def inject_seo_config():
+    """向所有模板注入SEO/GEO配置"""
+    from config import get_config
+    seo = get_config("seo", {})
+    return {
+        "seo_company_name": "浙江永颐装饰工程有限公司",
+        "seo_company_telephone": seo.get("company_telephone", "13357048951"),
+        "seo_company_email": seo.get("company_email", "info@jinmojianshe.com"),
+        "seo_company_address": seo.get("company_address", "浙江省杭州市"),
+        "seo_company_area_served": seo.get("company_area_served", "全国"),
+        "seo_company_founding_date": seo.get("company_founding_date", "2018"),
+        "seo_baidu_tongji_id": seo.get("baidu_tongji_id", ""),
+        "seo_site_url": "https://ai.jinmojianshe.com",
+        "seo_site_name": "永颐无机磨石 · 施工管理平台",
+    }
 app.secret_key = os.environ.get('SECRET_KEY')
 if not app.secret_key:
     raise RuntimeError(

@@ -40,6 +40,16 @@ DEFAULT_CONFIG = {
         "backup_interval_days": 7,
         "max_backups": 10,
     },
+    "seo": {
+        "baidu_tongji_id": "",
+        "baidu_verify": "codeva-lVx2jy1w82",
+        "bing_verify": "",
+        "company_telephone": "13357048951",
+        "company_email": "info@jinmojianshe.com",
+        "company_address": "浙江省杭州市",
+        "company_area_served": "全国",
+        "company_founding_date": "2018",
+    },
 }
 
 
