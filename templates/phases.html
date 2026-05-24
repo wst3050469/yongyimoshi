@@ -153,12 +153,17 @@
                 else if (p.status === 'completed') completed++;
 
                 return `
-                    <div class="phase-card ${cls}" onclick="showActions(${i})" id="card-${i}">
+                    <div class="phase-card ${cls}" id="card-${i}">
                         <div class="order-badge">${p.phase_order}</div>
                         <div class="icon">${icons[p.phase_name] || '📋'}</div>
                         <div class="name">${p.phase_name}</div>
                         <div>
                             <span class="status-label status-${p.status}">${statusChinese[p.status] || p.status}</span>
+                        </div>
+                        <div class="card-actions" style="margin-top:6px;display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
+                            ${p.status === 'pending' ? \`<button class="action-btn start" onclick="event.stopPropagation();updatePhase(${pid},'\${p.phase_name}','in_progress')">🔵 开始</button>\` : ''}
+                            ${p.status === 'in_progress' ? \`<button class="action-btn complete" onclick="event.stopPropagation();updatePhase(${pid},'\${p.phase_name}','completed')">✅ 完成</button>\` : ''}
+                            ${p.status === 'completed' ? \`<button class="action-btn rollback" onclick="event.stopPropagation();updatePhase(${pid},'\${p.phase_name}','in_progress')">↩️ 回退</button>\` : ''}
                         </div>
                         ${!isLast ? '<div class="arrow">→</div>' : ''}
                     </div>
@@ -175,39 +180,6 @@
             updateChart(phases);
         }
 
-        function showActions(index) {
-            const pid = document.getElementById('projectSelect').value;
-            if (!pid) return;
-
-            // 获取当前卡片信息
-            const cards = document.querySelectorAll('.phase-card');
-            const card = cards[index];
-            if (!card) return;
-
-            // 从DOM推断当前状态
-            const statusLabel = card.querySelector('.status-label');
-            const phaseName = card.querySelector('.name').textContent;
-            const currentStatus = statusLabel.className.includes('pending') ? 'pending'
-                : statusLabel.className.includes('in_progress') ? 'in_progress' : 'completed';
-
-            // 构建可执行的操作
-            const actions = [];
-            if (currentStatus === 'pending') actions.push({ label: '🔵 开始此工序', status: 'in_progress' });
-            if (currentStatus === 'in_progress') actions.push({ label: '✅ 标记完成', status: 'completed' });
-            if (currentStatus === 'completed') actions.push({ label: '↩️ 回退到进行中', status: 'in_progress' });
-
-            if (actions.length === 0) return;
-
-            // 选择操作
-            const msg = actions.map((a, i) => `${i+1}. ${a.label}`).join('\n');
-            const choice = prompt(`[${phaseName}] 当前状态: ${currentStatus}\n请选择操作:\n${msg}\n\n输入编号(1-${actions.length})或取消:`);
-            if (!choice) return;
-
-            const idx = parseInt(choice) - 1;
-            if (idx < 0 || idx >= actions.length) return;
-
-            updatePhase(pid, phaseName, actions[idx].status);
-        }
 
         async function updatePhase(pid, phaseName, newStatus) {
             try {
