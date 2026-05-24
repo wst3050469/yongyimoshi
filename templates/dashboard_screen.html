@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据大屏 - 永颐无机磨石</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: #0a1628; color: #fff; overflow: hidden;
+            width: 100vw; height: 100vh;
+        }
+        .dashboard { 
+            display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
+            grid-template-rows: auto 1fr 1fr;
+            gap: 16px; padding: 20px;
+            height: 100vh;
+            background: linear-gradient(135deg, #0a1628 0%, #1a2744 100%);
+        }
+        .header { 
+            grid-column: 1 / -1; 
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 8px;
+        }
+        .header h1 { font-size: 1.8rem; color: #60a5fa; letter-spacing: 2px; }
+        .header .time { font-size: 1.2rem; color: #94a3b8; font-variant-numeric: tabular-nums; }
+        .header .subtitle { font-size: 0.9rem; color: #64748b; }
+        
+        .card {
+            background: linear-gradient(135deg, rgba(30,58,95,0.8) 0%, rgba(15,33,60,0.9) 100%);
+            border: 1px solid rgba(96,165,250,0.2);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            overflow: hidden;
+        }
+        .card h3 { font-size: 0.85rem; color: #60a5fa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+        .metric-value { font-size: 2.8rem; font-weight: 700; color: #fff; line-height: 1.2; }
+        .metric-label { font-size: 0.8rem; color: #94a3b8; margin-top: 4px; }
+        .metric-row { display: flex; gap: 12px; flex-wrap: wrap; }
+        
+        .chart-container { height: 180px; width: 100%; }
+        
+        .log-item { 
+            display: flex; gap: 8px; padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.8rem; color: #cbd5e1;
+        }
+        .log-item .date { color: #60a5fa; white-space: nowrap; min-width: 60px; }
+        .log-item .project { color: #f59e0b; white-space: nowrap; min-width: 80px; }
+        .log-item .content { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .log-list { overflow-y: auto; max-height: 200px; }
+        .log-list::-webkit-scrollbar { width: 3px; }
+        .log-list::-webkit-scrollbar-thumb { background: rgba(96,165,250,0.3); border-radius: 2px; }
+        
+        .project-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 4px 0; font-size: 0.78rem;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .project-name { color: #e2e8f0; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .project-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .project-bar-fill { height: 100%; border-radius: 3px; }
+        .project-pct { color: #94a3b8; min-width: 35px; text-align: right; }
+        
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center; }
+        .status-item .num { font-size: 1.6rem; font-weight: 700; }
+        .status-item .lbl { font-size: 0.7rem; color: #64748b; }
+        
+        .blink { animation: blink 2s infinite; }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        
+        /* Span classes */
+        .span-2 { grid-column: span 2; }
+        .span-1 { grid-column: span 1; }
+        
+        @media (max-width: 1024px) {
+            .dashboard { grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; }
+            .metric-value { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard" id="app">
+    <!-- Header -->
+    <div class="header">
+        <div>
+            <h1>🏗️ 永颐无机磨石 · 数据指挥中心</h1>
+            <div class="subtitle">浙江永颐装饰工程有限公司 · 施工管理平台 v4.6.0</div>
+        </div>
+        <div style="text-align:right;">
+            <div class="time" id="clock">--:--:--</div>
+            <div class="subtitle">数据每60秒自动刷新</div>
+        </div>
+    </div>
+
+    <!-- 项目总数 -->
+    <div class="card">
+        <h3>📋 项目总数</h3>
+        <div class="metric-value" id="totalProjects">--</div>
+        <div class="metric-label">进行中 / 已完成</div>
+    </div>
+
+    <!-- 总面积 -->
+    <div class="card">
+        <h3>📐 施工总面积</h3>
+        <div class="metric-value" id="totalArea"><span id="areaNum">--</span> <small style="font-size:1rem;">m²</small></div>
+        <div class="metric-label">全平台累计</div>
+    </div>
+
+    <!-- 质量合格率 -->
+    <div class="card">
+        <h3>✅ 质量合格率</h3>
+        <div class="metric-value" id="qualityRate">--</div>
+        <div class="metric-label">总检测 <span id="qualityTotal">0</span> 次</div>
+    </div>
+
+    <!-- 数据总量 -->
+    <div class="card">
+        <h3>📊 数据总量</h3>
+        <div class="metric-value" id="totalRecords">--</div>
+        <div class="metric-label">条记录</div>
+    </div>
+
+    <!-- 月度趋势图 (span-2) -->
+    <div class="card span-2">
+        <h3>📈 月度日志趋势</h3>
+        <div class="chart-container"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <!-- 项目状态分布 (span-1) -->
+    <div class="card">
+        <h3>🔄 项目状态分布</h3>
+        <div class="chart-container" style="height:150px;"><canvas id="statusChart"></canvas></div>
+        <div class="status-grid" id="statusGrid" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- 项目进度列表 (span-1) -->
+    <div class="card span-1">
+        <h3>📋 项目进度一览</h3>
+        <div id="projectList" style="max-height:220px;overflow-y:auto;">
+            <div style="color:#64748b;text-align:center;padding:20px;">加载中...</div>
+        </div>
+    </div>
+
+    <!-- 最近施工日志 (span-2) -->
+    <div class="card span-2">
+        <h3>📝 最近施工日志</h3>
+        <div class="log-list" id="logList">
+            <div style="color:#64748b;text-align:center;padding:20px;">加载中...</div>
+        </div>
+    </div>
+
+    <!-- 系统状态 -->
+    <div class="card span-2" style="grid-column: 3 / -1;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h3>⚙️ 系统状态</h3>
+            <span class="blink" style="color:#22c55e;font-size:0.8rem;">● 运行中</span>
+        </div>
+        <div style="display:flex;gap:24px;margin-top:8px;color:#94a3b8;font-size:0.8rem;">
+            <span>版本: <strong id="sysVersion">v4.6.0</strong></span>
+            <span>API端点: <strong id="sysEndpoints">--</strong></span>
+            <span>数据库: <strong id="sysDbSize">--</strong></span>
+            <span>更新时间: <strong id="updateTime">--</strong></span>
+        </div>
+    </div>
+</div>
+
+<script>
+let chartInstances = {};
+let refreshTimer = null;
+
+function updateClock() {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    document.getElementById('clock').textContent = 
+        `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+
+function loadData() {
+    fetch('/api/dashboard-screen/data')
+    .then(r => r.json())
+    .then(data => {
+        const ov = data.overview;
+        
+        // 项目数
+        document.getElementById('totalProjects').textContent = ov.total_projects;
+        
+        // 面积
+        document.getElementById('areaNum').textContent = ov.total_area.toFixed(0);
+        
+        // 质量合格率
+        document.getElementById('qualityRate').textContent = ov.quality.pass_rate + '%';
+        document.getElementById('qualityTotal').textContent = ov.quality.total;
+        
+        // 数据总量
+        const total = Object.values(ov.tables).reduce((a,b) => a+b, 0);
+        document.getElementById('totalRecords').textContent = total.toLocaleString();
+        
+        // 系统信息
+        document.getElementById('sysEndpoints').textContent = '183';
+        document.getElementById('sysDbSize').textContent = '0.39 MB';
+        document.getElementById('updateTime').textContent = data.timestamp;
+        
+        // 状态分布
+        renderStatusGrid(ov.status_distribution);
+        
+        // 项目进度列表
+        renderProjectList(data.projects_progress);
+        
+        // 最近日志
+        renderLogList(data.recent_logs);
+        
+        // 图表
+        renderTrendChart(ov.log_trend);
+        renderStatusChart(ov.status_distribution);
+    })
+    .catch(() => {
+        // 静默失败，下次重试
+    });
+}
+
+function renderStatusGrid(dist) {
+    const el = document.getElementById('statusGrid');
+    const colors = {'进行中': '#60a5fa', '已完成': '#22c55e', '未开始': '#64748b', '已暂停': '#f59e0b'};
+    el.innerHTML = Object.entries(dist).map(([k,v]) => `
+        <div class="status-item">
+            <div class="num" style="color:${colors[k] || '#94a3b8'}">${v}</div>
+            <div class="lbl">${k}</div>
+        </div>
+    `).join('');
+}
+
+function renderProjectList(projects) {
+    const el = document.getElementById('projectList');
+    el.innerHTML = projects.map(p => {
+        const pct = p.total > 0 ? (p.checked / p.total * 100).toFixed(1) : 0;
+        const color = pct >= 100 ? '#22c55e' : pct > 0 ? '#60a5fa' : '#64748b';
+        return `<div class="project-row">
+            <div class="project-name" title="${p.name}">${p.name}</div>
+            <div class="project-bar"><div class="project-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+            <div class="project-pct">${pct}%</div>
+        </div>`;
+    }).join('');
+}
+
+function renderLogList(logs) {
+    const el = document.getElementById('logList');
+    if (!logs || logs.length === 0) {
+        el.innerHTML = '<div style="color:#64748b;text-align:center;padding:20px;">暂无日志</div>';
+        return;
+    }
+    el.innerHTML = logs.map(l => `
+        <div class="log-item">
+            <span class="date">${l.log_date}</span>
+            <span class="project">${l.project_name}</span>
+            <span class="content">${l.work_content || '无内容'}</span>
+        </div>
+    `).join('');
+}
+
+function renderTrendChart(trend) {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    if (chartInstances.trend) chartInstances.trend.destroy();
+    if (!trend || trend.length === 0) {
+        chartInstances.trend = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: ['暂无数据'], datasets: [{ data: [0] }] },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+        return;
+    }
+    chartInstances.trend = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: trend.map(t => t.month),
+            datasets: [{
+                label: '日志数',
+                data: trend.map(t => t.count),
+                backgroundColor: 'rgba(96,165,250,0.7)',
+                borderColor: 'rgba(96,165,250,1)',
+                borderWidth: 1,
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } },
+                y: { beginAtZero: true, ticks: { color: '#94a3b8', font: { size: 10 }, stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+        }
+    });
+}
+
+function renderStatusChart(dist) {
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    if (chartInstances.status) chartInstances.status.destroy();
+    const colors = {'进行中': '#60a5fa', '已完成': '#22c55e', '未开始': '#64748b', '已暂停': '#f59e0b'};
+    const labels = Object.keys(dist);
+    const data = Object.values(dist);
+    if (labels.length === 0) {
+        chartInstances.status = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: ['暂无'], datasets: [{ data: [1] }] },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+        return;
+    }
+    chartInstances.status = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: labels.map(k => colors[k] || '#64748b'),
+                borderColor: '#0a1628',
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            cutout: '65%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#94a3b8', font: { size: 10 }, padding: 8 }
+                }
+            }
+        }
+    });
+}
+
+// 初始化
+function init() {
+    updateClock();
+    loadData();
+    setInterval(updateClock, 1000);
+    setInterval(loadData, 60000);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

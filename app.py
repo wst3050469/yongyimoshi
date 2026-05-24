@@ -1878,6 +1878,82 @@ def api_export_csv(table_name):
 
 
 # ============================================================
+# Excel 导出 API (v4.6.0)
+# ============================================================
+
+@app.route('/api/export/excel/<table_name>')
+def api_export_excel(table_name):
+    """导出Excel数据"""
+    project_id = request.args.get('project_id', 0, type=int)
+    allowed_tables = ['projects', 'logs', 'quality', 'materials', 'workers', 'suppliers', 'equipment']
+    if table_name not in allowed_tables:
+        return api_error(f"不支持的表: {table_name}，支持: {', '.join(allowed_tables)}")
+
+    from database import export_to_excel
+    excel_data = export_to_excel(project_id, table_name)
+    if not excel_data:
+        return api_error("无数据可导出")
+
+    filename_map = {
+        'projects': '项目汇总', 'logs': '施工日志', 'quality': '质量检测',
+        'materials': '材料记录', 'workers': '工人花名册',
+        'suppliers': '供应商清单', 'equipment': '设备清单',
+    }
+    from urllib.parse import quote
+    filename = f"yongyi_{table_name}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    display_name = f"{filename_map.get(table_name, table_name)}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+
+    response = make_response(excel_data)
+    response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    response.headers['Content-Disposition'] = f"attachment; filename={filename}; filename*=UTF-8''{quote(display_name)}"
+    return response
+
+
+@app.route('/dashboard-screen')
+def dashboard_screen():
+    """数据看板大屏页面"""
+    return render_template('dashboard_screen.html')
+
+
+@app.route('/api/dashboard-screen/data')
+def api_dashboard_screen_data():
+    """数据看板大屏数据"""
+    from reports import generate_overview
+    overview = generate_overview()
+
+    from database import get_db
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 最近施工日志
+    rows = cursor.execute("""
+        SELECT p.name as project_name, l.log_date, l.work_content, l.weather
+        FROM daily_logs l JOIN projects p ON l.project_id = p.id
+        ORDER BY l.log_date DESC LIMIT 10
+    """).fetchall()
+    recent_logs = [dict(r) for r in rows]
+
+    # 各项目进度
+    rows = cursor.execute("""
+        SELECT p.id, p.name, p.area, p.status,
+               (SELECT COUNT(*) FROM checklist_state cs WHERE cs.project_id = p.id AND cs.is_checked = 1) as checked,
+               (SELECT COUNT(*) FROM checklist_state cs WHERE cs.project_id = p.id) as total
+        FROM projects p ORDER BY p.id
+    """).fetchall()
+    projects_progress = [dict(r) for r in rows]
+
+    conn.close()
+
+    return jsonify({
+        "overview": overview,
+        "recent_logs": recent_logs,
+        "projects_progress": projects_progress,
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    })
+
+
+
+# ============================================================
 # 安全管理
 # ============================================================
 

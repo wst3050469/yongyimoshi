@@ -3420,3 +3420,213 @@ def get_database_stats_detailed() -> Dict:
         pass
     conn.close()
     return stats
+
+
+# ============================================================
+# Excel 导出 (v4.6.0)
+# ============================================================
+
+def export_to_excel(project_id: int = 0, table_name: str = "projects") -> Optional[bytes]:
+    """导出项目数据为Excel格式
+
+    参数:
+        project_id: 项目ID (0=所有项目)
+        table_name: 表名 (projects/logs/quality/materials/workers/suppliers/equipment)
+
+    返回:
+        Excel文件字节流
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    conn = get_db()
+    cursor = conn.cursor()
+    from io import BytesIO
+    
+    filename_map = {
+        'projects': '项目汇总', 'logs': '施工日志', 'quality': '质量检测',
+        'materials': '材料记录', 'workers': '工人花名册',
+        'suppliers': '供应商清单', 'equipment': '设备清单',
+    }
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = filename_map.get(table_name, table_name)
+
+    # 样式定义
+    header_font = Font(name='Microsoft YaHei', bold=True, color='FFFFFF', size=11)
+    header_fill = PatternFill(start_color='1A5276', end_color='1A5276', fill_type='solid')
+    header_alignment = Alignment(horizontal='center', vertical='center')
+    cell_alignment = Alignment(vertical='center', wrap_text=True)
+    thin_border = Border(
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC'),
+    )
+
+    def _write_header(headers):
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+
+    def _write_rows(data_rows):
+        for r, row in enumerate(data_rows, 2):
+            for c, val in enumerate(row, 1):
+                cell = ws.cell(row=r, column=c, value=val)
+                cell.alignment = cell_alignment
+                cell.border = thin_border
+
+    def _auto_width():
+        for col in ws.columns:
+            max_len = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                if cell.value:
+                    # 中文字符按2倍宽度计算
+                    val = str(cell.value)
+                    length = sum(2 if ord(c) > 127 else 1 for c in val)
+                    max_len = max(max_len, length)
+            ws.column_dimensions[col_letter].width = min(max_len + 4, 40)
+
+    try:
+        if table_name == 'projects':
+            if project_id:
+                rows = cursor.execute("""
+                    SELECT id AS '项目ID', name AS '项目名称', area AS '面积(m²)',
+                           base_thickness AS '基层厚度(mm)', surface_thickness AS '面层厚度(mm)',
+                           status AS '状态', created_at AS '创建时间'
+                    FROM projects WHERE id = ? ORDER BY id
+                """, (project_id,)).fetchall()
+            else:
+                rows = cursor.execute("""
+                    SELECT id AS '项目ID', name AS '项目名称', area AS '面积(m²)',
+                           base_thickness AS '基层厚度(mm)', surface_thickness AS '面层厚度(mm)',
+                           status AS '状态', created_at AS '创建时间'
+                    FROM projects ORDER BY id
+                """).fetchall()
+            if rows:
+                _write_header(list(rows[0].keys()))
+                _write_rows([list(r) for r in rows])
+
+        elif table_name == 'logs':
+            if project_id:
+                rows = cursor.execute("""
+                    SELECT log_date AS '日期', weather AS '天气', temperature AS '温度(℃)',
+                           workers AS '工人数', work_content AS '施工内容',
+                           materials_used AS '材料使用', issues AS '问题'
+                    FROM daily_logs WHERE project_id = ? ORDER BY log_date
+                """, (project_id,)).fetchall()
+            else:
+                rows = cursor.execute("""
+                    SELECT p.name AS '项目', l.log_date AS '日期', l.weather AS '天气',
+                           l.temperature AS '温度(℃)', l.workers AS '工人数',
+                           l.work_content AS '施工内容', l.issues AS '问题'
+                    FROM daily_logs l JOIN projects p ON l.project_id = p.id ORDER BY l.log_date
+                """).fetchall()
+            if rows:
+                _write_header(list(rows[0].keys()))
+                _write_rows([list(r) for r in rows])
+
+        elif table_name == 'quality':
+            if project_id:
+                rows = cursor.execute("""
+                    SELECT test_name AS '检测项目', standard_value AS '标准值',
+                           actual_value AS '实测值',
+                           CASE WHEN is_pass = 1 THEN '合格' ELSE '不合格' END AS '结果',
+                           test_date AS '检测日期'
+                    FROM quality_tests WHERE project_id = ? ORDER BY test_date
+                """, (project_id,)).fetchall()
+            else:
+                rows = cursor.execute("""
+                    SELECT p.name AS '项目', q.test_name AS '检测项目',
+                           q.standard_value AS '标准值', q.actual_value AS '实测值',
+                           CASE WHEN q.is_pass = 1 THEN '合格' ELSE '不合格' END AS '结果',
+                           q.test_date AS '检测日期'
+                    FROM quality_tests q JOIN projects p ON q.project_id = p.id ORDER BY q.test_date
+                """).fetchall()
+            if rows:
+                _write_header(list(rows[0].keys()))
+                _write_rows([list(r) for r in rows])
+
+        elif table_name == 'materials':
+            if project_id:
+                rows = cursor.execute("""
+                    SELECT material_name AS '材料名称', quantity_kg AS '数量(kg)',
+                           quantity_packages AS '包装数', unit_price AS '单价(元)',
+                           total_cost AS '总价(元)', record_date AS '记录日期'
+                    FROM material_records WHERE project_id = ? ORDER BY record_date
+                """, (project_id,)).fetchall()
+            else:
+                rows = cursor.execute("""
+                    SELECT p.name AS '项目', m.material_name AS '材料名称',
+                           m.quantity_kg AS '数量(kg)', m.unit_price AS '单价(元)',
+                           m.total_cost AS '总价(元)', m.record_date AS '记录日期'
+                    FROM material_records m JOIN projects p ON m.project_id = p.id ORDER BY m.record_date
+                """).fetchall()
+            if rows:
+                _write_header(list(rows[0].keys()))
+                _write_rows([list(r) for r in rows])
+
+        elif table_name == 'workers':
+            if project_id:
+                rows = cursor.execute("""
+                    SELECT name AS '姓名', phone AS '电话', role AS '工种',
+                           hourly_rate AS '时薪(元)', notes AS '备注'
+                    FROM workers WHERE team_id IN (
+                        SELECT id FROM teams WHERE project_id = ?
+                    ) ORDER BY name
+                """, (project_id,)).fetchall()
+            else:
+                rows = cursor.execute("""
+                    SELECT name AS '姓名', phone AS '电话', role AS '工种',
+                           hourly_rate AS '时薪(元)', notes AS '备注'
+                    FROM workers ORDER BY name
+                """).fetchall()
+            if rows:
+                _write_header(list(rows[0].keys()))
+                _write_rows([list(r) for r in rows])
+
+        elif table_name == 'suppliers':
+            rows = cursor.execute("""
+                SELECT name AS '供应商名称', contact_person AS '联系人',
+                       phone AS '电话', materials AS '供应材料',
+                       rating AS '评分', notes AS '备注'
+                FROM suppliers ORDER BY name
+            """).fetchall()
+            if rows:
+                _write_header(list(rows[0].keys()))
+                _write_rows([list(r) for r in rows])
+
+        elif table_name == 'equipment':
+            rows = cursor.execute("""
+                SELECT name AS '设备名称', type AS '类型', model AS '型号',
+                       quantity AS '数量', status AS '状态',
+                       purchase_date AS '购置日期'
+                FROM equipment ORDER BY name
+            """).fetchall()
+            if rows:
+                _write_header(list(rows[0].keys()))
+                _write_rows([list(r) for r in rows])
+
+        else:
+            conn.close()
+            return None
+
+        _auto_width()
+        conn.close()
+
+        # 冻结首行
+        ws.freeze_panes = 'A2'
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return output.getvalue()
+
+    except Exception as e:
+        conn.close()
+        raise e
