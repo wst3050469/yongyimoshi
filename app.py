@@ -1915,6 +1915,12 @@ def page_faq():
     return render_template('faq.html')
 
 
+@app.route('/construction-process')
+def page_construction():
+    """无机磨石施工工艺流程页面（无需登录）"""
+    return render_template('construction_process.html')
+
+
 @app.route('/robots.txt')
 def robots_txt():
     """搜索引擎爬虫规则"""
@@ -1954,6 +1960,12 @@ def sitemap_xml():
     <loc>https://ai.jinmojianshe.com/platform/faq</loc>
     <lastmod>{today}</lastmod>
     <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ai.jinmojianshe.com/platform/construction-process</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
 </urlset>
