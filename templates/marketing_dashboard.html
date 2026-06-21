@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html
+<head>
+<meta charset="UTF-8">
+<title>AI Content Marketing v5.0.0</title>
+<style>
+*{margin:0;padding:0}
+body{font-family:sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+header{background:#fff;border-radius:16px;padding:30px;margin-bottom:24px}
+h1{font-size:28px;color:#333}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.stat-card{background:#fff;border-radius:12px;padding:20px;text-align:center}
+.num{font-size:32px;font-weight:700;color:#667eea}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.card{background:#fff;border-radius:12px;padding:24px;margin-bottom:24px}
+.card h2{font-size:18px;border-bottom:2px solid #667eea;padding-bottom:8px;margin-bottom:16px}
+input,select{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px}
+button{background:#667eea;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer}
+.result-box{background:#f5f5f5;border-radius:8px;padding:16px;margin-top:12px;white-space:pre-wrap}
+.tag{display:inline-block;background:#e8f0fe;color:#667eea;padding:2px 10px;border-radius:12px;margin:2px}
+</style></head><body>
+<div class="container">
+<header><h1>AI Content Marketing System v5.0.0</h1></header>
+<div class="stats">
+<div class="stat-card"><div class="num" id="kwCount">0</div><div>Keywords</div></div>
+<div class="stat-card"><div class="num" id="contentCount">0</div><div>Contents</div></div>
+<div class="stat-card"><div class="num" id="compCount">0</div><div>Competitors</div></div>
+<div class="stat-card"><div class="num" id="reportCount">0</div><div>Reports</div></div>
+</div><div class="grid-2">
+<div class="card"><h2>Keyword Engine</h2>
+<input id="newKw" placeholder="Add keyword..."><button onclick="addKw()">Add</button>
+<div id="kwTags"></div>
+<hr><h3>Content Generator</h3>
+<select id="genGroup"><option>Product</option><option>Tech</option></select>
+<button onclick="generate()" style="width:100%">Generate</button>
+<div class="result-box" id="genResult">Ready</div></div>
+<div class="card"><h2>Competitor Analysis</h2>
+<input id="compUrl" placeholder="URL..."><button onclick="addComp()">Add</button>
+<div id="compList"></div>
+<button onclick="analyze()" style="width:100%">Analyze</button>
+<div class="result-box" id="compResult">Ready</div></div>
+</div>
+<div class="card"><h2>Marketing Report</h2>
+<button onclick="report('weekly')">Weekly</button>
+<button onclick="report('monthly')">Monthly</button>
+<div class="result-box" id="reportResult">Ready</div></div>
+</div>
+<script>
+async function api(url,d){const o={headers:{"Content-Type":"application/json"}};if(d)o.method="POST",o.body=JSON.stringify(d);const r=await fetch(url,o);return r.json()}
+async function loadKw(){const d=await api("/api/keywords");const a=Array.isArray(d)?d:d.keywords||[];document.getElementById("kwCount").textContent=a.length;const c=document.getElementById("kwTags");c.innerHTML="";a.forEach(k=>{const t=document.createElement("span");t.className="tag";t.textContent=k;c.appendChild(t)})}
+async function addKw(){const v=document.getElementById("newKw").value.trim();if(!v)return;await api("/api/keywords",{action:"add",keyword:v});document.getElementById("newKw").value="";loadKw()}
+async function generate(){const kw=document.querySelector(".tag");if(!kw)return;const r=await api("/api/generate",{keyword:kw.textContent,group:document.getElementById("genGroup").value});const b=document.getElementById("genResult");b.textContent=r.video||r.article||r.content||JSON.stringify(r)}
+async function addComp(){const v=document.getElementById("compUrl").value.trim();if(!v)return;await api("/api/competitors",{url:v});document.getElementById("compUrl").value="";loadComp()}
+async function loadComp(){const d=await api("/api/competitors");const a=Array.isArray(d)?d:d.competitors||[];document.getElementById("compCount").textContent=a.length;const c=document.getElementById("compList");c.innerHTML="";a.forEach(i=>{const t=document.createElement("span");t.className="tag";t.textContent=i.name||i.url||i;c.appendChild(t)})}
+async function analyze(){const r=await api("/api/analysis");document.getElementById("compResult").textContent=r.report||r.analysis||JSON.stringify(r)}
+async function report(t){const r=await api("/api/report",{type:t});document.getElementById("reportResult").textContent=r.report||r.summary||JSON.stringify(r)}
+loadKw();loadComp()
+</script></body></html>
