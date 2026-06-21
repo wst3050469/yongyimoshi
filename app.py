@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""永颐金磨石 AI营销系统 Flask App - v5.2.0 (内容持久化+视频增强)"""
+"""永颐金磨石 AI营销系统 Flask App - v5.3.0 (内容持久化+视频增强)"""
 import sys, os, json, logging
 from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
@@ -35,7 +35,7 @@ def index():
 
 @app.route("/health")
 def health():
-    return jsonify({"status":"ok","service":"yongyi-marketing","version":"5.2.0","time":datetime.now().isoformat()})
+    return jsonify({"status":"ok","service":"yongyi-marketing","version":"5.3.0","time":datetime.now().isoformat()})
 
 # ===== 仪表盘统计 =====
 
