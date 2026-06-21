@@ -46,6 +46,7 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 <div class="stat-card"><div class="num" id="contentCount">0</div><div class="label">已生成内容</div></div>
 <div class="stat-card"><div class="num" id="compCount">0</div><div class="label">竞品跟踪</div></div>
 <div class="stat-card"><div class="num" id="reportCount">0</div><div class="label">综合报告</div></div>
+<div class="stat-card"><div class="num" id="videoCount">0</div><div class="label">AI视频生成</div></div>
 </div>
 
 <div class="grid-2">
@@ -87,6 +88,32 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 <div class="result" id="reportResult" style="min-height:150px">选择报告类型生成营销报告</div>
 </div>
 
+<div class="card" style="margin-bottom:20px">
+<h2>AI视频生成（豆包Seedance）</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+<div>
+<div style="font-size:13px;color:#666;margin-bottom:4px">选择关键词</div>
+<select id="videoKw" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px"></select>
+</div>
+<div>
+<div style="font-size:13px;color:#666;margin-bottom:4px">画面比例</div>
+<select id="videoRatio" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px">
+<option value="16:9">16:9 横屏</option>
+<option value="9:16">9:16 竖屏</option>
+<option value="1:1">1:1 方形</option>
+</select>
+</div>
+</div>
+<div style="margin-top:8px">
+<div style="font-size:13px;color:#666;margin-bottom:4px">视频描述 / Prompt</div>
+<textarea id="videoPrompt" rows="2" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit" placeholder="留空则根据关键词自动生成"></textarea>
+</div>
+<div style="margin-top:8px;display:flex;gap:8px">
+<button class="btn" onclick="createVideo()" style="flex:1">生成AI视频</button>
+</div>
+<div class="loading" id="videoLoading" style="display:none;text-align:center;padding:10px;color:#8898aa">正在提交视频生成任务...</div>
+<div id="videoTaskList" style="margin-top:12px"></div>
+</div>
 <div style="text-align:center;padding:20px;color:#8898aa;font-size:12px">永颐金磨石 AI内容营销系统 &copy; 2025 | 数据仅供参考</div>
 </div>
 <div class="toast" id="toast"></div>
@@ -220,6 +247,94 @@ async function genReport(type){
 
 loadKw();
 loadComp();
+loadVideoKw();
+loadVideoTasks();
+
+// ===== 视频生成 =====
+var videoPollers = {};
+
+async function createVideo(){
+ var sel=document.getElementById('videoKw');
+ var keyword=sel.value;
+ var prompt=document.getElementById('videoPrompt').value.trim()||'';
+ var ratio=document.getElementById('videoRatio').value;
+ if(!keyword){toast('请先选择关键词');return}
+ document.getElementById('videoLoading').style.display='block';
+ var data={keyword:keyword,group:'产品词',ratio:ratio};
+ if(prompt)data.prompt=prompt;
+ var r=await api('/marketing/api/video/create',data);
+ document.getElementById('videoLoading').style.display='none';
+ if(r.success){
+  toast('视频任务已提交: '+r.task_id.substr(0,8)+'...');
+  loadVideoTasks();
+  startPollVideo(r.task_id);
+ }else{
+  toast('创建失败: '+(r.error||'未知错误'));
+ }
+}
+
+async function loadVideoTasks(){
+ var r=await api('/marketing/api/video/tasks');
+ var list=document.getElementById('videoTaskList');
+ if(!r.tasks||r.tasks.length==0){
+  list.innerHTML='<div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">暂无视频任务</div>';
+  document.getElementById('videoCount').textContent='0';
+  return;
+ }
+ document.getElementById('videoCount').textContent=r.tasks.length;
+ var html='<table style="width:100%;font-size:13px;border-collapse:collapse">';
+ html+='<tr style="background:#f7fafc;font-weight:600"><td style="padding:6px 8px">任务ID</td><td>状态</td><td>关键词</td><td>时间</td></tr>';
+ r.tasks.reverse().forEach(function(t){
+  var statusColor={pending:'#ecc94b',running:'#4299e1',succeeded:'#48bb78',failed:'#fc8181'};
+  var color=statusColor[t.status]||'#a0aec0';
+  var created=t.created_at?t.created_at.substr(11,8):'';
+  html+='<tr style="border-top:1px solid #e2e8f0">';
+  html+='<td style="padding:6px 8px;font-family:monospace">'+(t.id?t.id.substr(0,12):'-')+'</td>';
+  html+='<td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+color+';margin-right:4px"></span>'+t.status+'</td>';
+  html+='<td>'+t.prompt+'</td>';
+  html+='<td>'+created+'</td></tr>';
+ });
+ html+='</table>';
+ list.innerHTML=html;
+}
+
+function startPollVideo(taskId){
+ if(videoPollers[taskId])clearInterval(videoPollers[taskId]);
+ videoPollers[taskId]=setInterval(async function(){
+  var r=await api('/marketing/api/video/status/'+taskId);
+  if(r.success&&r.data){
+   var s=r.data.status;
+   if(s!='running'&&s!='pending'){
+    toast('视频任务 '+taskId.substr(0,8)+' 状态: '+s);
+    loadVideoTasks();
+    clearInterval(videoPollers[taskId]);
+    delete videoPollers[taskId];
+   }
+  }
+ },8000); // 每8秒轮询
+}
+
+// 填充视频关键词下拉
+async function loadVideoKw(){
+ var d=await api('/marketing/api/keywords');
+ var arr=Array.isArray(d)?d:d.keywords||{};
+ var sel=document.getElementById('videoKw');
+ sel.innerHTML='';
+ var all=[];
+ for(var k in arr){
+  if(arr.hasOwnProperty(k)){
+   var list=arr[k];
+   if(Array.isArray(list)){list.forEach(function(kw){all.push(kw)})}
+  }
+ }
+ all.forEach(function(kw){
+  var opt=document.createElement('option');
+  opt.value=kw;
+  opt.textContent=kw;
+  sel.appendChild(opt)
+ });
+}
+
 </script>
 </body>
 </html>
