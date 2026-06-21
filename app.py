@@ -1,18 +1,44 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""永颐金磨石 AI营销系统 Flask App - v5.3.0 (内容持久化+视频增强)"""
-import sys, os, json, logging
+"""永颐金磨石 AI营销系统 Flask App - v5.5.0 (密码保护)
+注意：Nginx proxy_pass http://127.0.0.1:5050/ 会剥离 /marketing/ 前缀
+Flask 实际收到的路径是 /, /api/*, /wechat/* 等"""
+import sys, os, json, logging, uuid
 from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, session
 from docs.marketing_system import KeywordEngine, CompetitorAnalyzer, MarketingReport
 from docs.video_generator import VideoGenerator
 from docs.content_store import ContentStore
+from docs.wechat_handler import wechat_handler as wechat_route
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# ===== 认证配置 =====
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', uuid.uuid4().hex)
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'liu201314')
+
+# 无需认证的路径前缀（白名单）- 注意：Nginx 剥离了 /marketing/ 前缀
+AUTH_WHITELIST = ['/api/login', '/api/check-auth', '/health', '/wechat']
+
+@app.before_request
+def auth_check():
+    """对所有需要保护的路径进行登录验证"""
+    path = request.path
+    # 白名单路径放行
+    for wl in AUTH_WHITELIST:
+        if path.startswith(wl):
+            return None
+    # 检查登录状态
+    if not session.get('authenticated'):
+        # API 请求返回 401 JSON
+        if path.startswith('/api/'):
+            return jsonify({"status": "error", "message": "未登录"}), 401
+        # 页面请求显示登录页
+        return render_template("login.html"), 403
 
 @app.after_request
 def add_cors(resp):
@@ -27,6 +53,30 @@ ca = CompetitorAnalyzer()
 vg = VideoGenerator()
 cs = ContentStore()
 
+# ===== 登录/登出 =====
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json() or {}
+    password = data.get("password", "")
+    if password == ADMIN_PASSWORD:
+        session['authenticated'] = True
+        session['login_time'] = datetime.now().isoformat()
+        log.info("Admin login successful")
+        return jsonify({"status": "ok", "message": "登录成功"})
+    log.warning("Admin login failed")
+    return jsonify({"status": "error", "message": "密码错误"}), 401
+
+@app.route("/api/logout", methods=["POST"])
+def logout():
+    session.clear()
+    log.info("Admin logout")
+    return jsonify({"status": "ok", "message": "已登出"})
+
+@app.route("/api/check-auth")
+def check_auth():
+    return jsonify({"authenticated": session.get('authenticated', False)})
+
 # ===== 首页 =====
 
 @app.route("/")
@@ -35,13 +85,12 @@ def index():
 
 @app.route("/health")
 def health():
-    return jsonify({"status":"ok","service":"yongyi-marketing","version":"5.3.0","time":datetime.now().isoformat()})
+    return jsonify({"status":"ok","service":"yongyi-marketing","version":"5.5.0","time":datetime.now().isoformat()})
 
 # ===== 仪表盘统计 =====
 
 @app.route("/api/stats")
 def stats():
-    """返回仪表盘所有统计数据"""
     kws = ke.get_kws()
     kw_count = sum(len(v) for v in kws.values())
     content_stats = cs.get_stats()
@@ -70,7 +119,7 @@ def keywords():
         return jsonify({"status": "error", "message": "invalid"})
     return jsonify({"keywords": ke.get_kws()})
 
-# ===== 内容生成（自动保存到历史） =====
+# ===== 内容生成 =====
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
@@ -79,12 +128,10 @@ def generate():
     grp = data.get("group", "产品词")
     log.info(f"Generating content: keyword={kw}, group={grp}")
     
-    # 生成内容
     video_script = ke.gen_video(kw, grp)
     article = ke.gen_article(kw, grp)
     xhs = ke.gen_xhs(kw, grp)
     
-    # 自动持久化保存
     cs.save("video_script", kw, grp, video_script)
     cs.save("article", kw, grp, article)
     cs.save("xhs_note", kw, grp, xhs)
@@ -106,7 +153,6 @@ def contents():
             log.info(f"Content deleted: {cid}")
             return jsonify({"status": "ok"})
         return jsonify({"status": "error", "message": "not found"}), 404
-    # GET: 获取内容历史，支持 type 筛选
     content_type = request.args.get("type", "")
     if content_type:
         return jsonify({"contents": cs.get_by_type(content_type)})
@@ -147,7 +193,6 @@ def report():
 
 @app.route("/api/video/create", methods=["POST"])
 def video_create():
-    """创建视频生成任务"""
     data = request.get_json() or {}
     prompt = data.get("prompt", "")
     keyword = data.get("keyword", "")
@@ -170,14 +215,22 @@ def video_create():
 
 @app.route("/api/video/status/<task_id>")
 def video_status(task_id):
-    """查询视频任务状态"""
     result = vg.query_task(task_id)
     return jsonify(result)
 
 @app.route("/api/video/tasks")
 def video_tasks():
-    """获取所有视频任务列表"""
     return jsonify({"tasks": vg.get_all_tasks()})
+
+# ===== 微信公众号（公开访问，不受认证保护）=====
+
+@app.route("/api/wechat/message", methods=["GET", "POST"])
+def wechat_message():
+    return wechat_route()
+
+@app.route("/wechat/message", methods=["GET", "POST"])
+def wechat_message_short():
+    return wechat_route()
 
 # ===== 错误处理 =====
 

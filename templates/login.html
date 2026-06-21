@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>永颐金磨石 - 管理登录</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-box{background:#fff;border-radius:16px;padding:40px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center}
+.login-box .logo{font-size:22px;font-weight:700;color:#0f3460;margin-bottom:8px}
+.login-box .subtitle{font-size:13px;color:#8898aa;margin-bottom:24px}
+.login-box input[type="password"]{width:100%;padding:12px 16px;border:2px solid #e2e8f0;border-radius:10px;font-size:15px;outline:none;transition:border-color .2s;text-align:center;letter-spacing:4px}
+.login-box input[type="password"]:focus{border-color:#0f3460}
+.login-box button{width:100%;margin-top:16px;padding:12px;background:#0f3460;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s}
+.login-box button:hover{background:#1a1a2e;transform:translateY(-1px)}
+.login-box button:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.login-box .error{color:#e53e3e;font-size:13px;margin-top:10px;display:none}
+.login-box .error.show{display:block}
+.login-box .footer{font-size:12px;color:#a0aec0;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:16px}
+</style>
+</head>
+<body>
+<div class="login-box">
+<div class="logo">永颐金磨石</div>
+<div class="subtitle">AI智能内容营销系统 · 管理登录</div>
+<form id="loginForm" onsubmit="doLogin(event)">
+<input type="password" id="password" placeholder="请输入管理密码" autofocus>
+<button type="submit" id="loginBtn">登 录</button>
+<div class="error" id="error">密码错误，请重试</div>
+</form>
+<div class="footer">仅供内部管理使用 &copy; 永颐金磨石</div>
+</div>
+
+<script>
+async function doLogin(e){
+ e.preventDefault();
+ var btn=document.getElementById('loginBtn');
+ var err=document.getElementById('error');
+ var pwd=document.getElementById('password').value;
+ if(!pwd)return;
+ btn.disabled=true;
+ btn.textContent='验证中...';
+ err.classList.remove('show');
+ try{
+  var r=await fetch('/marketing/api/login',{
+   method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({password:pwd})
+  });
+  var d=await r.json();
+  if(d.status==='ok'){
+   window.location.href='/marketing/';
+  }else{
+   err.classList.add('show');
+   document.getElementById('password').value='';
+   document.getElementById('password').focus();
+  }
+ }catch(ex){
+  err.textContent='网络错误，请重试';
+  err.classList.add('show');
+ }
+ btn.disabled=false;
+ btn.textContent='登 录';
+}
+</script>
+</body>
+</html>
