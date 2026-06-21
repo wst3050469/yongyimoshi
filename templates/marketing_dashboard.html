@@ -292,12 +292,13 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 
 <div class="card" style="margin-bottom:20px">
 <h2>内容历史</h2>
-<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-<button class="btn btn-sm" onclick="loadContentHistory('')" style="background:#0f3460">全部</button>
-<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('video_script')">抖音脚本</button>
-<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('article')">公众号文章</button>
-<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('xhs_note')">小红书笔记</button>
-<button class="btn btn-sm btn-secondary" onclick="batchGenerate()">批量生成</button>
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+<button class="btn btn-sm filter-btn" data-filter="" onclick="loadContentHistory('')" style="background:#0f3460">全部</button>
+<button class="btn btn-sm btn-secondary filter-btn" data-filter="video_script" onclick="loadContentHistory('video_script')">抖音脚本</button>
+<button class="btn btn-sm btn-secondary filter-btn" data-filter="article" onclick="loadContentHistory('article')">公众号文章</button>
+<button class="btn btn-sm btn-secondary filter-btn" data-filter="xhs_note" onclick="loadContentHistory('xhs_note')">小红书笔记</button>
+<input id="contentSearch" placeholder="搜索关键词..." style="padding:4px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;width:140px;outline:none" oninput="filterContentBySearch()">
+<button class="btn btn-sm btn-secondary" onclick="batchGenerate()" id="batchBtn">批量生成</button>
 <button class="btn btn-sm btn-secondary" onclick="exportAllContent()">导出全部</button>
 </div>
 <div id="contentHistory"><div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">加载中...</div></div>
@@ -971,8 +972,37 @@ function showContentDetail(cid){
 
 
 // ===== 批量生成 =====
+
+
+// ===== 筛选状态 =====
+window._currentFilter='';
+function loadContentHistoryWithFilter(ft){
+ window._currentFilter=ft||'';
+ document.querySelectorAll('.filter-btn').forEach(function(b){
+  var isActive=b.getAttribute('data-filter')==window._currentFilter;
+  b.style.background=isActive?'#0f3460':'';
+  b.style.color=isActive?'#fff':'';
+  b.className=isActive?'btn btn-sm filter-btn':'btn btn-sm btn-secondary filter-btn';
+ });
+ loadContentHistory(ft);
+}
+
+// Override onclick handlers for filter buttons
+document.addEventListener('DOMContentLoaded',function(){
+ document.querySelectorAll('.filter-btn').forEach(function(b){
+  var ft=b.getAttribute('data-filter')||'';
+  b.onclick=function(){loadContentHistoryWithFilter(ft)};
+ });
+});
+
+// ===== 搜索 =====
+function filterContentBySearch(){
+ loadContentHistory(window._currentFilter);
+}
+
+// ===== 批量生成 =====
 async function batchGenerate(){
- var btn=event.target;
+ var btn=document.getElementById('batchBtn');
  btn.textContent='生成中...';
  btn.disabled=true;
  var r=await api('/marketing/api/keywords');
@@ -986,6 +1016,7 @@ async function batchGenerate(){
  var count=0;
  for(var i=0;i<allKws.length;i++){
   try{
+   btn.textContent='生成中 '+i+'/'+allKws.length;
    await api('/marketing/api/generate',{keyword:allKws[i].kw,group:allKws[i].group});
    count++;
   }catch(e){}
@@ -993,9 +1024,8 @@ async function batchGenerate(){
  btn.textContent='批量生成';
  btn.disabled=false;
  toast('已生成 '+count+' 条内容');
- loadContentHistory('');
+ loadContentHistoryWithFilter(window._currentFilter);
 }
-
 
 // ===== 导出内容 =====
 function exportAllContent(){
