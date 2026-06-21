@@ -293,9 +293,21 @@ async function loadVideoTasks(){
   html+='<td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+color+';margin-right:4px"></span>'+t.status+'</td>';
   html+='<td>'+t.prompt+'</td>';
   html+='<td>'+created+'</td></tr>';
+  // 已完成任务显示视频播放器
+  if(t.status=='succeeded'&&t.video_url){
+   html+='<tr style="border-top:none;background:#f0fff4"><td colspan="4" style="padding:4px 8px 8px">';
+   html+='<video src="'+t.video_url+'" controls style="width:100%;max-height:180px;border-radius:6px" preload="metadata"></video>';
+   html+='</td></tr>';
+  }
  });
  html+='</table>';
  list.innerHTML=html;
+ // 自动轮询运行中的任务
+ r.tasks.forEach(function(t){
+  if(t.status=='running'||t.status=='pending'){
+   startPollVideo(t.id);
+  }
+ });
 }
 
 function startPollVideo(taskId){
