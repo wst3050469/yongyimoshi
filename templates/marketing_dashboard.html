@@ -291,9 +291,14 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 
 
 <div class="card" style="margin-bottom:20px">
-
 <h2>内容历史</h2>
-
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+<button class="btn btn-sm" onclick="loadContentHistory('')" style="background:#0f3460">全部</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('video_script')">抖音脚本</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('article')">公众号文章</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('xhs_note')">小红书笔记</button>
+<button class="btn btn-sm btn-secondary" onclick="batchGenerate()">批量生成</button>
+</div>
 <div id="contentHistory"><div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">加载中...</div></div>
 
 </div>
@@ -648,9 +653,9 @@ function copyText(t){
 
 // ===== 内容历史管理 =====
 
-async function loadContentHistory(){
+async function loadContentHistory(filterType){
 
- var r=await api('/marketing/api/contents');
+ var url='/marketing/api/contents';if(filterType)url+='?type='+filterType;var r=await api(url);
 
  var box=document.getElementById('contentHistory');
 
@@ -961,6 +966,33 @@ function showContentDetail(cid){
   d.innerHTML=html;
   document.body.appendChild(d);
  });
+}
+
+
+// ===== 批量生成 =====
+async function batchGenerate(){
+ var btn=event.target;
+ btn.textContent='生成中...';
+ btn.disabled=true;
+ var r=await api('/marketing/api/keywords');
+ var groups=r.keywords||{};
+ var allKws=[];
+ for(var g in groups){
+  if(groups.hasOwnProperty(g)){
+   groups[g].forEach(function(kw){allKws.push({kw:kw,group:g})});
+  }
+ }
+ var count=0;
+ for(var i=0;i<allKws.length;i++){
+  try{
+   await api('/marketing/api/generate',{keyword:allKws[i].kw,group:allKws[i].group});
+   count++;
+  }catch(e){}
+ }
+ btn.textContent='批量生成';
+ btn.disabled=false;
+ toast('已生成 '+count+' 条内容');
+ loadContentHistory('');
 }
 </script>
 
