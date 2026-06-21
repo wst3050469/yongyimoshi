@@ -614,18 +614,31 @@ def auto_publish_jobs():
     return jsonify({"status": "ok", "jobs": jobs, "stats": ppl.get_stats()})
 
 
-@app.route("/api/auto-publish/manual-login", methods=["POST"])
-def auto_publish_login():
+@app.route("/api/auto-publish/authorize", methods=["POST"])
+def auto_publish_authorize():
     """
-    手动登录某平台（首次使用/会话过期时）
-    注意：服务器需要图形界面支持，通常通过远程桌面/VNC操作
+    授权登录 — 输入账号密码，系统自动登录并保存会话
+    
+    请求体:
+    {
+        "platform": "weibo",
+        "username": "your_account",
+        "password": "your_password"
+    }
+    
+    扫码平台(抖音/小红书)留空账号密码即可, 系统会返回二维码图片
     """
     data = request.get_json() or {}
-    platform = data.get("platform", "douyin")
-    timeout = data.get("timeout", 300)
-
-    log.info(f"Manual login requested for: {platform}")
-    result = apb.manual_login(platform, timeout)
+    platform = data.get("platform", "")
+    username = data.get("username", "")
+    password = data.get("password", "")
+    
+    if not platform:
+        return jsonify({"status": "error", "message": "请指定平台"})
+    
+    log.info(f"Auth request: platform={platform}, user={username[:3] if username else '(QR)'}***")
+    result = apb.auto_login(platform, username, password)
+    
     return jsonify({
         "status": "ok" if result.get("success") else "error",
         "result": result
@@ -634,16 +647,7 @@ def auto_publish_login():
 
 @app.route("/api/auto-publish/import-session", methods=["POST"])
 def auto_publish_import():
-    """
-    导入浏览器cookies会话（推荐方式！）
-    管理员在自己的浏览器登录平台 → 导出cookies JSON → 上传到服务器
-    
-    请求体:
-    {
-        "platform": "douyin",
-        "cookies": "[{\"name\":\"...\",\"value\":\"...\"},...]"  // JSON字符串或数组
-    }
-    """
+    """备用: 导入浏览器Cookie JSON"""
     data = request.get_json() or {}
     platform = data.get("platform", "")
     cookies_data = data.get("cookies", "")

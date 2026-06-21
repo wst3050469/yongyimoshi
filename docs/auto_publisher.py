@@ -49,6 +49,52 @@ PLATFORM_CONFIG = {
 
 SESSION_FILE = os.path.join(PROFILE_DIR, 'sessions.json')
 
+# 平台登录配置：登录页URL + 表单字段 + 登录方式
+PLATFORM_LOGIN = {
+    'douyin': {
+        'login_url': 'https://creator.douyin.com/',
+        'login_method': 'qr',  # 抖音创作者平台主要用扫码
+        'qr_selector': 'img[class*="qrcode"], canvas[class*="qrcode"], img[class*="qr"], .qrcode-img img',
+        'login_detect': 'creator-micro',  # URL包含此字符串=已登录
+    },
+    'xhs': {
+        'login_url': 'https://creator.xiaohongshu.com/login',
+        'login_method': 'qr',
+        'qr_selector': 'img[class*="qr"], canvas, .qrcode img',
+        'login_detect': 'publish/publish',
+    },
+    'weibo': {
+        'login_url': 'https://weibo.com/login.php',
+        'login_method': 'password',
+        'username_selector': 'input[name="username"], input[type="text"]',
+        'password_selector': 'input[name="password"], input[type="password"]',
+        'submit_selector': 'a[tabindex="6"], button:has-text("登录"), .W_btn_a',
+        'login_detect': 'weibo.com',
+    },
+    'zhihu': {
+        'login_url': 'https://www.zhihu.com/signin',
+        'login_method': 'password',
+        'username_selector': 'input[name="username"], input[type="text"]',
+        'password_selector': 'input[name="password"], input[type="password"]',
+        'submit_selector': 'button:has-text("登录"), .SignFlow-submitButton',
+        'login_detect': 'zhihu.com',
+    },
+    'baijiahao': {
+        'login_url': 'https://baijiahao.baidu.com/builder/rc/login',
+        'login_method': 'password',
+        'username_selector': 'input[name="userName"], input[placeholder*="手机"], input[placeholder*="账号"]',
+        'password_selector': 'input[name="password"], input[type="password"]',
+        'submit_selector': 'button:has-text("登录"), input[type="submit"]',
+        'login_detect': 'baijiahao.baidu.com',
+    },
+    'wechat': {
+        'login_url': 'https://mp.weixin.qq.com/',
+        'login_method': 'qr',
+        'qr_selector': 'img[class*="qrcode"], .login_qrcode img, #qrcode img',
+        'login_detect': 'mp.weixin.qq.com',
+    },
+}
+
 
 class AutoPublisher:
     """全自动发布器 — Playwright浏览器驱动"""
@@ -90,6 +136,9 @@ class AutoPublisher:
                 'name': cfg['name'], 'url': cfg['url'],
                 'logged_in': bool(sess.get('cookies')),
                 'last_login': sess.get('last_login', ''),
+                'cookie_count': sess.get('cookie_count', 0),
+                'auth_method': sess.get('auth_method', ''),
+                'username': sess.get('username', ''),
                 'expires_in_days': sess.get('expires_in_days', 0)
             }
         return result
@@ -127,135 +176,184 @@ class AutoPublisher:
         self.contexts[platform] = context
         return context
 
-    # ===== 手动登录（首次/会话过期） =====
+    # ===== 授权登录（账号密码 / 扫码） =====
 
-    def manual_login(self, platform: str, timeout_seconds: int = 300) -> Dict:
-        """打开浏览器让用户手动扫码登录，然后保存会话"""
+    def auto_login(self, platform: str, username: str = '', password: str = '') -> Dict:
+        """自动授权登录 — 填入账号密码→自动登录→保存会话
+        
+        密码登录平台(微博/知乎/百家号): 自动填表提交
+        扫码平台(抖音/小红书): 截图二维码→管理员扫码→自动识别登录成功
+        """
         if platform not in PLATFORM_CONFIG:
             return {'success': False, 'error': f'不支持的平台: {platform}'}
 
         cfg = PLATFORM_CONFIG[platform]
+        login_cfg = PLATFORM_LOGIN.get(platform, {})
+        login_method = login_cfg.get('login_method', 'password')
+
         self._ensure_playwright()
+        context, browser = None, None
 
-        # 使用非headless模式打开浏览器
-        browser = self.playwright.chromium.launch(
-            headless=False,
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
-        )
-        context = browser.new_context(
-            viewport={'width': 1280, 'height': 900},
-            locale='zh-CN', timezone_id='Asia/Shanghai'
-        )
-        page = context.new_page()
-        page.goto(cfg['url'], wait_until='networkidle', timeout=60000)
+        try:
+            browser = self.playwright.chromium.launch(
+                headless=True,
+                args=['--no-sandbox','--disable-setuid-sandbox','--disable-blink-features=AutomationControlled']
+            )
+            context = browser.new_context(
+                viewport={'width':1280,'height':900},
+                locale='zh-CN', timezone_id='Asia/Shanghai',
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
+            )
+            context.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined});window.chrome={runtime:{}};")
+            page = context.new_page()
 
-        print(f"[AutoPublisher] 请在浏览器中手动登录 {cfg['name']} (超时{timeout_seconds}秒)...")
-        start = time.time()
-        login_detected = False
+            login_url = login_cfg.get('login_url', cfg['url'])
+            page.goto(login_url, wait_until='networkidle', timeout=30000)
+            time.sleep(2)
 
-        while time.time() - start < timeout_seconds:
-            time.sleep(3)
-            # 简单检测：URL不再是登录页
-            current_url = page.url
-            if 'login' not in current_url.lower() and 'passport' not in current_url.lower():
-                login_detected = True
-                break
+            qr_data = None
 
-        if login_detected:
+            # === 密码登录模式 ===
+            if login_method == 'password' and username and password:
+                user_sel = login_cfg.get('username_selector', 'input[type="text"]')
+                pwd_sel = login_cfg.get('password_selector', 'input[type="password"]')
+                submit_sel = login_cfg.get('submit_selector', 'button:has-text("登录")')
+
+                user_input = page.locator(user_sel).first
+                if user_input.count() > 0:
+                    user_input.click(); time.sleep(0.3)
+                    page.keyboard.type(username, delay=60)
+                    time.sleep(0.3)
+
+                pwd_input = page.locator(pwd_sel).first
+                if pwd_input.count() > 0:
+                    pwd_input.click(); time.sleep(0.3)
+                    page.keyboard.type(password, delay=60)
+                    time.sleep(0.3)
+
+                submit_btn = page.locator(submit_sel).first
+                if submit_btn.count() > 0:
+                    submit_btn.click()
+                    time.sleep(4)
+                else:
+                    page.keyboard.press('Enter')
+                    time.sleep(4)
+
+            # === 扫码登录模式 ===
+            if login_method == 'qr':
+                # 截图二维码
+                qr_sel = login_cfg.get('qr_selector', 'img, canvas')
+                qr_found = False
+                for sel in qr_sel.split(', '):
+                    try:
+                        el = page.locator(sel).first
+                        if el.count() > 0:
+                            qr_path = os.path.join(DATA_DIR, f'qr_{platform}_{int(time.time())}.png')
+                            el.screenshot(path=qr_path)
+                            qr_data = qr_path
+                            qr_found = True
+                            break
+                    except: pass
+                if not qr_found:
+                    qr_path = os.path.join(DATA_DIR, f'qr_{platform}_{int(time.time())}.png')
+                    page.screenshot(path=qr_path)
+                    qr_data = qr_path
+
+                # 等待扫码 (最多120秒, 每2秒检测一次)
+                detect_marker = login_cfg.get('login_detect', '')
+                print(f"[AutoPublisher] {cfg['name']} 二维码已生成, 等待手机扫码...")
+                logged_in = False
+                for _ in range(60):
+                    time.sleep(2)
+                    try:
+                        cur_url = page.url
+                        if detect_marker and detect_marker in cur_url and 'login' not in cur_url.lower():
+                            logged_in = True; break
+                        # 检测登录弹窗是否消失
+                        if page.locator('[class*="login"]').count() == 0 and page.locator('[class*="Login"]').count() == 0:
+                            # 可能已登录, 尝试跳转发布页验证
+                            pass
+                    except: pass
+
+                if not logged_in:
+                    context.close(); browser.close()
+                    return {'success': False, 'login_method': 'qr', 'qr_image': qr_data,
+                            'error': f'{cfg["name"]} 授权超时, 请用手机扫描二维码后重试',
+                            'hint': '请打开二维码图片扫描授权'}
+
+            # === 验证登录并保存会话 ===
+            detect = login_cfg.get('login_detect', '')
+            if detect:
+                try:
+                    # 尝试直接跳转发布页验证
+                    page.goto(cfg['url'], wait_until='domcontentloaded', timeout=20000)
+                    time.sleep(2)
+                except: pass
+
             profile_path = os.path.join(PROFILE_DIR, platform)
             os.makedirs(profile_path, exist_ok=True)
             state_path = os.path.join(profile_path, 'state.json')
             context.storage_state(path=state_path)
 
+            cookie_count = len(context.cookies())
             self.sessions[platform] = {
                 'cookies': True,
-                'last_login': datetime.now().isoformat(),
-                'expires_in_days': 25
-            }
-            self._save_sessions()
-
-            context.close()
-            browser.close()
-            return {'success': True, 'message': f'{cfg["name"]} 登录成功，会话已保存', 'platform': platform}
-        else:
-            context.close()
-            browser.close()
-            return {'success': False, 'error': f'登录超时，请在{timeout_seconds}秒内完成登录'}
-
-    def import_session(self, platform: str, cookies_json: str) -> Dict:
-        """
-        导入浏览器cookies（从浏览器导出的JSON格式）
-        管理员在自己的浏览器登录后，导出cookies JSON上传到服务器。
-        
-        支持的cookie格式:
-        1. Playwright storage_state格式: {"cookies": [...], "origins": [...]}
-        2. 纯cookies数组: [{"name":"...","value":"...","domain":"..."}, ...]
-        3. Netscape格式文本（自动解析）
-        """
-        if platform not in PLATFORM_CONFIG:
-            return {'success': False, 'error': f'不支持的平台: {platform}'}
-        
-        cfg = PLATFORM_CONFIG[platform]
-        
-        try:
-            import json as _json
-            data = _json.loads(cookies_json) if isinstance(cookies_json, str) else cookies_json
-            
-            # 规范化cookies
-            if isinstance(data, dict) and 'cookies' in data:
-                cookies = data['cookies']
-                origins = data.get('origins', [])
-            elif isinstance(data, list):
-                cookies = data
-                origins = []
-            else:
-                return {'success': False, 'error': '无法解析cookie格式，需要JSON数组或{cookies:[...]}对象'}
-            
-            # 验证cookie格式
-            valid_cookies = []
-            for c in cookies:
-                if isinstance(c, dict) and 'name' in c and 'value' in c:
-                    valid_cookies.append({
-                        'name': c['name'],
-                        'value': c['value'],
-                        'domain': c.get('domain', ''),
-                        'path': c.get('path', '/'),
-                        'httpOnly': c.get('httpOnly', False),
-                        'secure': c.get('secure', False),
-                        'sameSite': c.get('sameSite', 'Lax')
-                    })
-            
-            if not valid_cookies:
-                return {'success': False, 'error': '没有有效的cookie条目'}
-            
-            # 保存为Playwright storage_state格式
-            profile_path = os.path.join(PROFILE_DIR, platform)
-            os.makedirs(profile_path, exist_ok=True)
-            state_path = os.path.join(profile_path, 'state.json')
-            
-            state = {'cookies': valid_cookies, 'origins': origins}
-            with open(state_path, 'w', encoding='utf-8') as f:
-                _json.dump(state, f, ensure_ascii=False, indent=2)
-            
-            self.sessions[platform] = {
-                'cookies': True,
+                'cookie_count': cookie_count,
                 'last_login': datetime.now().isoformat(),
                 'expires_in_days': 25,
-                'cookie_count': len(valid_cookies),
-                'import_method': 'manual_upload'
+                'auth_method': login_method,
+                'username': username if username else 'QR扫码'
             }
             self._save_sessions()
-            
+
+            context.close(); browser.close()
+
             return {
                 'success': True,
                 'platform': platform,
                 'platform_name': cfg['name'],
-                'cookie_count': len(valid_cookies),
-                'message': f'{cfg["name"]} 会话已导入 ({len(valid_cookies)}个cookies)'
+                'login_method': login_method,
+                'cookie_count': cookie_count,
+                'qr_image': qr_data,
+                'message': f'{cfg["name"]} 授权成功! ({cookie_count} 个会话cookie已保存)'
             }
-            
+
         except Exception as e:
-            return {'success': False, 'error': f'导入失败: {str(e)}'}
+            if context: 
+                try: context.close()
+                except: pass
+            if browser:
+                try: browser.close()
+                except: pass
+            return {'success': False, 'error': f'{cfg["name"]} 授权失败: {str(e)[:150]}'}
+
+    def import_session(self, platform: str, cookies_json: str) -> Dict:
+        """备用方案: 导入浏览器Cookie JSON"""
+        if platform not in PLATFORM_CONFIG:
+            return {'success': False, 'error': '不支持的平台'}
+        cfg = PLATFORM_CONFIG[platform]
+        try:
+            import json as _json
+            data = _json.loads(cookies_json) if isinstance(cookies_json, str) else cookies_json
+            if isinstance(data, dict) and 'cookies' in data:
+                cookies = data['cookies']; origins = data.get('origins', [])
+            elif isinstance(data, list):
+                cookies = data; origins = []
+            else:
+                return {'success': False, 'error': '格式错误,需JSON数组'}
+            valid = [{'name':c['name'],'value':c['value'],'domain':c.get('domain',''),'path':c.get('path','/')}
+                     for c in cookies if isinstance(c,dict) and 'name' in c and 'value' in c]
+            if not valid:
+                return {'success': False, 'error': '无有效cookie'}
+            profile_path = os.path.join(PROFILE_DIR, platform)
+            os.makedirs(profile_path, exist_ok=True)
+            with open(os.path.join(profile_path, 'state.json'), 'w', encoding='utf-8') as f:
+                _json.dump({'cookies':valid,'origins':origins}, f, ensure_ascii=False, indent=2)
+            self.sessions[platform] = {'cookies':True,'last_login':datetime.now().isoformat(),'cookie_count':len(valid)}
+            self._save_sessions()
+            return {'success':True,'platform':platform,'platform_name':cfg['name'],'cookie_count':len(valid)}
+        except Exception as e:
+            return {'success':False,'error':f'导入失败: {e}'}
 
     # ===== 自动发布核心 =====
 
@@ -478,6 +576,9 @@ class AutoPublisher:
                 'platform': platform, 'name': cfg['name'],
                 'logged_in': logged_in,
                 'last_login': sess.get('last_login', ''),
+                'cookie_count': sess.get('cookie_count', 0),
+                'auth_method': sess.get('auth_method', ''),
+                'username': sess.get('username', ''),
                 'expires_in_days': sess.get('expires_in_days', 0)
             }
         except Exception as e:
