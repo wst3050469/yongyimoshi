@@ -68,11 +68,14 @@ class ContentStore:
     
     def get_stats(self) -> Dict:
         """获取内容统计"""
-        counts = {"video_script": 0, "article": 0, "xhs_note": 0}
+        counts = {"video_script": 0, "article": 0, "xhs_note": 0,
+                  "baijiahao": 0, "zhihu": 0, "weibo": 0}
         for c in self._contents:
             t = c.get("type", "")
             if t in counts:
                 counts[t] += 1
+            else:
+                counts[t] = 1
         return {
             "total": len(self._contents),
             "counts": counts,

@@ -8,7 +8,7 @@
 
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 
-<title>永颐金磨石 AI内容营销系统 v5.3.0</title>
+<title>永颐金磨石 AI内容营销系统 v5.7.0</title>
 
 <style>
 
@@ -24,7 +24,7 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 
 .container{max-width:1400px;margin:0 auto;padding:24px}
 
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:24px}
 
 .stat-card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
 
@@ -136,7 +136,7 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 
 <h1>永颐金磨石 AI智能内容营销系统</h1>
 
-<span class="badge">v5.3.0</span>
+<span class="badge">v5.6.2</span>
 
 </div>
 
@@ -148,13 +148,64 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 
 <div class="stat-card"><div class="num" id="contentCount">0</div><div class="label">已生成内容</div></div>
 
+<div class="stat-card"><div class="num" id="pendingCount">0</div><div class="label" style="color:#975a16">待审核</div></div>
+
+<div class="stat-card"><div class="num" id="publishedCount">0</div><div class="label" style="color:#276749">已发布</div></div>
+
 <div class="stat-card"><div class="num" id="compCount">0</div><div class="label">竞品跟踪</div></div>
 
-<div class="stat-card"><div class="num" id="reportCount">0</div><div class="label">综合报告</div></div>
+<div class="stat-card"><div class="num" id="videoCount">0</div><div class="label">AI视频</div></div>
 
-<div class="stat-card"><div class="num" id="videoCount">0</div><div class="label">AI视频生成</div></div>
+<div class="stat-card"><div class="num" id="viewsCount">0</div><div class="label">总浏览量</div></div>
 
 </div>
+
+<!-- ===== v5.7.0 全自动化发布 ===== -->
+<div class="card" style="margin-bottom:20px;border-left:4px solid #e53e3e">
+<h2>🤖 全自动化发布 <span style="font-size:11px;color:#e53e3e;font-weight:400">BETA</span></h2>
+<div id="autoAuthBanner" style="background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#92400e;display:none">
+  <b>⚠️ 授权提醒</b> — 以下平台未登录，自动发布会跳过：<span id="needAuthList"></span>
+  <button class="btn btn-sm" onclick="showImportUI()" style="background:#f59e0b;color:#fff;margin-left:8px;font-size:11px">📥 导入Cookie 一键授权</button>
+</div>
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+  <label style="font-size:13px;white-space:nowrap">目标平台:</label>
+  <label class="tag" style="cursor:pointer"><input type="checkbox" value="douyin" checked onchange="updateAutoPlatforms()"> 抖音</label>
+  <label class="tag" style="cursor:pointer"><input type="checkbox" value="xhs" onchange="updateAutoPlatforms()"> 小红书</label>
+  <label class="tag" style="cursor:pointer"><input type="checkbox" value="baijiahao" onchange="updateAutoPlatforms()"> 百家号</label>
+  <label class="tag" style="cursor:pointer"><input type="checkbox" value="zhihu" onchange="updateAutoPlatforms()"> 知乎</label>
+  <label class="tag" style="cursor:pointer"><input type="checkbox" value="weibo" onchange="updateAutoPlatforms()"> 微博</label>
+  <label class="tag" style="cursor:pointer"><input type="checkbox" value="wechat" onchange="updateAutoPlatforms()"> 公众号</label>
+</div>
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+  <input type="text" id="autoSeedKw" placeholder="种子关键词(逗号分隔,留空用默认)" style="flex:1;min-width:200px">
+  <input type="number" id="autoMaxCount" value="3" min="1" max="10" style="width:60px" title="最多生成条数">
+  <select id="autoPubMode" style="width:110px">
+    <option value="true">自动发布</option>
+    <option value="false">仅生成(预览)</option>
+  </select>
+  <button class="btn" onclick="startAutoPublish()" style="background:#e53e3e">🚀 一键自动发布</button>
+  <button class="btn btn-secondary" onclick="loadAutoSessions()">📡 会话状态</button>
+  <button class="btn btn-secondary" onclick="showImportUI()">📥 导入Cookie</button>
+</div>
+<div id="autoPublishStatus" style="font-size:13px;line-height:1.6;max-height:300px;overflow-y:auto;background:#f7fafc;border-radius:8px;padding:12px;display:none"></div>
+<div id="autoImportUI" style="display:none;margin-top:8px;padding:12px;background:#fffbeb;border:1px solid #f59e0b;border-radius:8px">
+  <div style="font-size:13px;margin-bottom:8px;color:#92400e">
+    <b>📥 导入平台Cookie</b> — 在你的浏览器登录平台后，导出cookies JSON粘贴到下方
+  </div>
+  <select id="importPlatform" style="padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;margin-right:8px">
+    <option value="douyin">抖音</option><option value="xhs">小红书</option>
+    <option value="baijiahao">百家号</option><option value="zhihu">知乎</option>
+    <option value="weibo">微博</option><option value="wechat">公众号</option>
+  </select>
+  <textarea id="importCookies" placeholder="粘贴cookies JSON: [{&quot;name&quot;:&quot;sessionid&quot;,&quot;value&quot;:&quot;xxx&quot;,&quot;domain&quot;:&quot;.douyin.com&quot;},...]" 
+   style="width:100%;height:60px;margin-top:6px;font-size:11px;font-family:monospace;border:1px solid #e2e8f0;border-radius:6px;padding:6px"></textarea>
+  <button class="btn btn-sm" onclick="doImportSession()" style="margin-top:6px;background:#f59e0b">导入</button>
+  <button class="btn btn-sm btn-secondary" onclick="document.getElementById('autoImportUI').style.display='none'" style="margin-top:6px">取消</button>
+  <div style="font-size:11px;color:#8898aa;margin-top:4px">推荐Chrome扩展: EditThisCookie (导出→复制JSON)</div>
+</div>
+</div>
+
+
 
 
 
@@ -174,11 +225,13 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 
 <select id="genGroup"><option>产品词</option><option>品牌词</option><option>场景词</option><option>工艺词</option><option>痛点词</option><option>竞品词</option></select>
 
-<select id="genType"><option>抖音脚本</option><option>公众号文章</option><option>小红书笔记</option></select>
+<select id="genType"><option>抖音脚本</option><option>公众号文章</option><option>小红书笔记</option><option>百家号</option><option>知乎</option><option>微博</option></select>
 
 </div>
 
 <button class="btn" onclick="genContent()" style="width:100%">AI 生成内容</button>
+
+<button class="btn" onclick="genAllPlatforms()" style="width:100%;margin-top:8px;background:#276749">全平台一键生成 (6平台)</button>
 
 <div class="loading" id="genLoading">正在生成中...</div>
 
@@ -289,21 +342,92 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 </div>
 
 
+<!-- ====== v5.6.2 新增：AI关键词挖掘 ====== -->
+
+<div class="card" style="margin-bottom:20px">
+<h2>🤖 AI关键词挖掘</h2>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+<label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="minePlatform" value="douyin" checked> 抖音</label>
+<label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="minePlatform" value="xhs" checked> 小红书</label>
+<label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="minePlatform" value="baidu" checked> 百度</label>
+<label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="minePlatform" value="weibo"> 微博</label>
+<label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="minePlatform" value="zhihu"> 知乎</label>
+<button class="btn btn-sm" onclick="mineKeywords()">开始挖掘</button>
+<button class="btn btn-sm" onclick="agentDeepMine()" style="background:#276749">Agent深度挖掘</button>
+<button class="btn btn-sm btn-secondary" onclick="addAllMinedToSeed()">一键加入种子库</button>
+</div>
+<div class="loading" id="mineLoading">正在挖掘中...</div>
+<div id="minedKeywords" style="font-size:13px;line-height:1.8;max-height:300px;overflow-y:auto"></div>
+</div>
+
+
+
+<!-- ====== v5.6.2 AI Quality Engine ====== -->
+
+<div class="card" style="margin-bottom:20px">
+<h2>🧠 AI 内容质量评估</h2>
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+<input id="aiReviewContent" placeholder="粘贴要评估的内容..." style="flex:1;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px">
+<button class="btn btn-sm" onclick="aiFullReview()">AI全评估</button>
+<button class="btn btn-sm btn-secondary" onclick="aiScoreOnly()">仅评分</button>
+<button class="btn btn-sm btn-secondary" onclick="aiOptimize()">AI优化</button>
+<button class="btn btn-sm btn-secondary" onclick="aiInsight()">效果洞察</button>
+<button class="btn btn-sm btn-secondary" onclick="aiStrategy()">策略推荐</button>
+</div>
+<div id="aiQualityResult" style="font-size:13px;line-height:1.8;max-height:300px;overflow-y:auto;background:#f7fafc;border-radius:8px;padding:12px;min-height:60px;color:#8898aa">点击按钮让AI评估内容质量</div>
+</div>
+
+
+<!-- ====== v5.6.2 新增：发布审核 ====== -->
+
+<div class="card" style="margin-bottom:20px">
+<h2>📋 发布审核 <span style="font-size:12px;color:#8898aa;font-weight:400" id="publishQueueSummary"></span></h2>
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+<button class="btn btn-sm" onclick="loadPublishQueue('')" style="background:#0f3460">全部</button>
+<button class="btn btn-sm btn-secondary" onclick="loadPublishQueue('pending')">待审核</button>
+<button class="btn btn-sm btn-secondary" onclick="loadPublishQueue('approved')">已通过</button>
+<button class="btn btn-sm btn-secondary" onclick="loadPublishQueue('published')">已发布</button>
+<button class="btn btn-sm btn-secondary" onclick="loadPublishQueue('rejected')">已驳回</button>
+<button class="btn btn-sm btn-secondary" onclick="submitSelectedForReview()">提交选中审核</button>
+<button class="btn btn-sm" onclick="exportForPublish()" style="background:#e53e3e">导出发布包</button>
+<button class="btn btn-sm" onclick="publishToWechat()" style="background:#276749">发微信草稿箱</button>
+</div>
+<div id="publishQueueList"><div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">加载中...</div></div>
+</div>
+
+
+<!-- ====== v5.6.2 新增：效果数据看板 ====== -->
+
+<div class="card" style="margin-bottom:20px">
+<h2>📊 效果数据看板</h2>
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+<button class="btn btn-sm" onclick="loadAnalyticsDashboard()" style="background:#0f3460">刷新看板</button>
+<button class="btn btn-sm btn-secondary" onclick="showRecordMetrics()">录入效果数据</button>
+<button class="btn btn-sm btn-secondary" onclick="loadAnalyticsRecords('')">全部记录</button>
+</div>
+<div id="analyticsContent" style="font-size:13px;line-height:1.8;max-height:350px;overflow-y:auto">
+<div style="text-align:center;color:#8898aa;padding:10px">点击刷新看板查看效果数据</div>
+</div>
+</div>
+
 
 <div class="card" style="margin-bottom:20px">
 <h2>内容历史</h2>
-<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
-<button class="btn btn-sm filter-btn" data-filter="" onclick="loadContentHistory('')" style="background:#0f3460">全部</button>
-<button class="btn btn-sm btn-secondary filter-btn" data-filter="video_script" onclick="loadContentHistory('video_script')">抖音脚本</button>
-<button class="btn btn-sm btn-secondary filter-btn" data-filter="article" onclick="loadContentHistory('article')">公众号文章</button>
-<button class="btn btn-sm btn-secondary filter-btn" data-filter="xhs_note" onclick="loadContentHistory('xhs_note')">小红书笔记</button>
-<input id="contentSearch" placeholder="搜索关键词..." style="padding:4px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;width:140px;outline:none" oninput="filterContentBySearch()">
-<button class="btn btn-sm btn-secondary" onclick="batchGenerate()" id="batchBtn">批量生成</button>
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+<button class="btn btn-sm" onclick="loadContentHistory('')" style="background:#0f3460">全部</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('video_script')">抖音脚本</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('article')">公众号文章</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('xhs_note')">小红书笔记</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('baijiahao')">百家号</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('zhihu')">知乎</button>
+<button class="btn btn-sm btn-secondary" onclick="loadContentHistory('weibo')">微博</button>
+<button class="btn btn-sm btn-secondary" onclick="batchGenerate()">批量生成</button>
 <button class="btn btn-sm btn-secondary" onclick="exportAllContent()">导出全部</button>
 </div>
 <div id="contentHistory"><div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">加载中...</div></div>
 
 </div>
+
 
 <div style="text-align:center;padding:20px;color:#8898aa;font-size:12px">永颐金磨石 AI内容营销系统 &copy; 2025 | 数据仅供参考</div>
 
@@ -316,6 +440,8 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 <script>
 
 let genCount=0, rptCount=0;
+setTimeout(function(){loadAutoSessions()},800);
+setTimeout(function(){loadAutoSessions()},1000);
 
 
 
@@ -410,41 +536,82 @@ async function addKw(){
 
 
 async function genContent(){
-
+ 
  var kw=document.querySelector('.tag');
-
+ 
  if(!kw){toast('请先点击选择一个关键词');return}
-
+ 
  var keyword=kw.textContent;
-
+ 
  var group=document.getElementById('genGroup').value;
-
+ 
+ var genType=document.getElementById('genType').value;
+ 
  document.getElementById('genLoading').style.display='block';
-
+ 
  document.getElementById('genResult').textContent='';
-
- var r=await api('/marketing/api/generate',{keyword:keyword,group:group});
-
- document.getElementById('genLoading').style.display='none';
-
- var box=document.getElementById('genResult');
-
- var txt='';
-
- if(r.video){txt='[抖音脚本]\n'+r.video+'\n\n'}
-
- if(r.article){txt+='[公众号文章]\n'+r.article}
-
- if(r.xhs){txt+='\n\n[小红书笔记]\n'+r.xhs}
-
- box.textContent=txt||r.content||JSON.stringify(r);
-
+ 
+ if(genType==='百家号'||genType==='知乎'||genType==='微博'){
+  var r=await api('/marketing/api/generate/all-platforms',{keyword:keyword,group:group});
+  var typeMap={百家号:'baijiahao',知乎:'zhihu',微博:'weibo'};
+  var key=typeMap[genType]||genType;
+  document.getElementById('genLoading').style.display='none';
+  document.getElementById('genResult').textContent='['+genType+']\n'+(r.contents&&r.contents[key]?r.contents[key]:JSON.stringify(r));
+ }else{
+  var r=await api('/marketing/api/generate',{keyword:keyword,group:group});
+  document.getElementById('genLoading').style.display='none';
+  var box=document.getElementById('genResult');
+  var txt='';
+  if(r.video){txt='[抖音脚本]\n'+r.video+'\n\n'}
+  if(r.article){txt+='[公众号文章]\n'+r.article}
+  if(r.xhs){txt+='\n\n[小红书笔记]\n'+r.xhs}
+  box.textContent=txt||r.content||JSON.stringify(r);
+ }
+ 
  genCount++;
-
+ 
  document.getElementById('contentCount').textContent=genCount;
-
+ 
  toast('内容生成成功!');
+ 
+}
 
+async function genAllPlatforms(){
+ 
+ var kw=document.querySelector('.tag');
+ 
+ if(!kw){toast('请先点击选择一个关键词');return}
+ 
+ var keyword=kw.textContent;
+ 
+ var group=document.getElementById('genGroup').value;
+ 
+ document.getElementById('genLoading').style.display='block';
+ 
+ document.getElementById('genResult').textContent='全平台生成中(6平台), 请稍候...';
+ 
+ var r=await api('/marketing/api/generate/all-platforms',{keyword:keyword,group:group});
+ 
+ document.getElementById('genLoading').style.display='none';
+ 
+ var contents=r.contents||{};
+ 
+ var labels={douyin:'抖音脚本',wechat_article:'公众号文章',xhs:'小红书笔记',baijiahao:'百家号',zhihu:'知乎',weibo:'微博'};
+ 
+ var txt='=== 全平台生成 ('+keyword+') ===\n\n';
+ 
+ for(var key in labels){
+  if(contents[key])txt+='['+labels[key]+']\n'+contents[key]+'\n\n';
+ }
+ 
+ document.getElementById('genResult').textContent=txt||JSON.stringify(r);
+ 
+ genCount+=6;
+ 
+ document.getElementById('contentCount').textContent=genCount;
+ 
+ toast('6平台内容已生成!');
+ 
 }
 
 
@@ -673,7 +840,7 @@ async function loadContentHistory(filterType){
 
  r.contents.slice(0,20).forEach(function(c){
 
-  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记'};
+  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记',baijiahao:'百家号',zhihu:'知乎',weibo:'微博'};
 
   var label=typeLabel[c.type]||c.type;
 
@@ -722,17 +889,21 @@ async function deleteContent(cid){
 setTimeout(function(){
 
  api('/marketing/api/stats').then(function(d){
-
+ 
   if(d.keywords!==undefined)document.getElementById('kwCount').textContent=d.keywords;
-
+ 
   if(d.contents!==undefined)document.getElementById('contentCount').textContent=d.contents;
-
+ 
+  if(d.pending_review!==undefined)document.getElementById('pendingCount').textContent=d.pending_review;
+ 
+  if(d.published!==undefined)document.getElementById('publishedCount').textContent=d.published;
+ 
   if(d.competitors!==undefined)document.getElementById('compCount').textContent=d.competitors;
-
-  if(d.reports!==undefined)document.getElementById('reportCount').textContent=d.reports;
-
+ 
   if(d.videos!==undefined)document.getElementById('videoCount').textContent=d.videos;
-
+ 
+  if(d.total_views!==undefined)document.getElementById('viewsCount').textContent=d.total_views;
+ 
  });
 
  loadContentHistory();
@@ -954,7 +1125,7 @@ function showContentDetail(cid){
  api('/marketing/api/contents').then(function(r){
   var items=r.contents||[];
   var c=items.find(function(x){return x.id==cid})||{};
-  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记'};
+  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记',baijiahao:'百家号',zhihu:'知乎',weibo:'微博'};
   var label=typeLabel[c.type]||c.type||'';
   var html='<div class="modal-overlay active" onclick="if(event.target==this)closeModal()"><div class="modal-box">';
   html+='<button class="modal-close" onclick="closeModal()">&times;</button>';
@@ -972,37 +1143,8 @@ function showContentDetail(cid){
 
 
 // ===== 批量生成 =====
-
-
-// ===== 筛选状态 =====
-window._currentFilter='';
-function loadContentHistoryWithFilter(ft){
- window._currentFilter=ft||'';
- document.querySelectorAll('.filter-btn').forEach(function(b){
-  var isActive=b.getAttribute('data-filter')==window._currentFilter;
-  b.style.background=isActive?'#0f3460':'';
-  b.style.color=isActive?'#fff':'';
-  b.className=isActive?'btn btn-sm filter-btn':'btn btn-sm btn-secondary filter-btn';
- });
- loadContentHistory(ft);
-}
-
-// Override onclick handlers for filter buttons
-document.addEventListener('DOMContentLoaded',function(){
- document.querySelectorAll('.filter-btn').forEach(function(b){
-  var ft=b.getAttribute('data-filter')||'';
-  b.onclick=function(){loadContentHistoryWithFilter(ft)};
- });
-});
-
-// ===== 搜索 =====
-function filterContentBySearch(){
- loadContentHistory(window._currentFilter);
-}
-
-// ===== 批量生成 =====
 async function batchGenerate(){
- var btn=document.getElementById('batchBtn');
+ var btn=event.target;
  btn.textContent='生成中...';
  btn.disabled=true;
  var r=await api('/marketing/api/keywords');
@@ -1016,7 +1158,6 @@ async function batchGenerate(){
  var count=0;
  for(var i=0;i<allKws.length;i++){
   try{
-   btn.textContent='生成中 '+i+'/'+allKws.length;
    await api('/marketing/api/generate',{keyword:allKws[i].kw,group:allKws[i].group});
    count++;
   }catch(e){}
@@ -1024,15 +1165,16 @@ async function batchGenerate(){
  btn.textContent='批量生成';
  btn.disabled=false;
  toast('已生成 '+count+' 条内容');
- loadContentHistoryWithFilter(window._currentFilter);
+ loadContentHistory('');
 }
+
 
 // ===== 导出内容 =====
 function exportAllContent(){
  api('/marketing/api/contents').then(function(r){
   var items=r.contents||[];
   if(items.length==0){toast('没有可导出的内容');return}
-  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记'};
+  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记',baijiahao:'百家号',zhihu:'知乎',weibo:'微博'};
   var txt='永颐金磨石 AI内容营销系统 - 导出报告\n生成时间: '+new Date().toLocaleString()+'\n\n';
   txt+='='.repeat(50)+'\n\n';
   items.forEach(function(c,i){
@@ -1051,6 +1193,512 @@ function exportAllContent(){
  });
 }
 
+
+// ===== v5.6.2 新增：AI关键词挖掘 =====
+
+var minedKeywordCache = [];
+
+
+async function agentDeepMine(){
+ document.getElementById("mineLoading").style.display="block";
+ document.getElementById("minedKeywords").innerHTML="Agent深度挖掘中... 语义扩展 > 长尾词 > 问答 > 竞品 > 平台，请稍候...";
+ var checks=document.querySelectorAll(".minePlatform:checked");
+ var platforms=[]; checks.forEach(function(c){platforms.push(c.value)});
+ var r=await api("/marketing/api/keywords/agent-mine",{platforms:platforms});
+ document.getElementById("mineLoading").style.display="none";
+ var d=r.data||{};
+ var html="<div style='margin-bottom:8px;color:#0f3460;font-weight:600'>Agent挖掘完成!</div>";
+ html+="<div>总生成: "+d.total_generated+" | 词池总量: "+d.total_in_pool+" | 耗时: "+d.total_time_s+"s</div>";
+ html+="<div style='margin:8px 0;font-size:12px'>";
+ var rounds=d.rounds||{};
+ for(var k in rounds){
+  var rd=rounds[k];
+  html+="<span class='tag'>"+rd.label+": +"+rd.generated+"</span> ";
+ }
+ html+="</div>";
+ if(d.sample){
+  html+="<div style='margin-top:8px;font-size:13px'><b>样本关键词:</b></div>";
+  d.sample.slice(0,5).forEach(function(k,i){
+   html+="<div>"+(i+1)+". "+k.word+" <span class='tag'>"+k.agent_round+"</span></div>";
+  });
+ }
+ html+="<div style='margin-top:8px'><button class='btn btn-sm' onclick='addAllMinedPoolToSeed()'>一键加入全部词池到种子库</button></div>";
+ document.getElementById("minedKeywords").innerHTML=html;
+ minedKeywordCache=d.sample||[];
+ toast("Agent挖掘完成: +"+d.total_generated+"词");
+}
+
+async function addAllMinedPoolToSeed(){
+ document.getElementById("minedKeywords").innerHTML+="<div style='color:#8898aa'>正在导入词池...</div>";
+ var r=await api("/marketing/api/keywords/mined-pool");
+ var kws=r.keywords||[];
+ if(kws.length==0){toast("词池为空");return}
+ var count=0;
+ for(var i=0;i<kws.length;i++){
+  try{await api("/marketing/api/keywords",{action:"add",keyword:kws[i].word});count++}catch(e){}
+ }
+ toast("已导入 "+count+" 个关键词到种子库");
+ loadKw();
+}
+
+async function mineKeywords(){
+ var checks=document.querySelectorAll('.minePlatform:checked');
+ var platforms=[];
+ checks.forEach(function(c){platforms.push(c.value)});
+ if(platforms.length==0){toast('请选择至少一个平台');return}
+ document.getElementById('mineLoading').style.display='block';
+ document.getElementById('minedKeywords').innerHTML='';
+ var r=await api('/marketing/api/keywords/ai-mine',{platforms:platforms,count:10});
+ document.getElementById('mineLoading').style.display='none';
+ minedKeywordCache=r.keywords||[];
+ var html='<div style="margin-bottom:8px;color:#0f3460;font-weight:600">挖掘到 '+minedKeywordCache.length+' 个关键词 ('+platforms.join(',')+')</div>';
+ minedKeywordCache.forEach(function(k,i){
+  html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f0f2f5">';
+  html+='<span><b>'+(i+1)+'.</b> '+k.word+' <span class="tag">'+k.category+'</span> <span style="font-size:11px;color:'+(k.heat=='高'?'#e53e3e':'#8898aa')+'">'+k.heat+'热度</span></span>';
+  html+='<button class="btn btn-sm" onclick="addMinedToSeed(\''+i+'\')">加入种子</button>';
+  html+='</div>';
+ });
+ document.getElementById('minedKeywords').innerHTML=html;
+ toast('挖掘完成!');
+}
+
+function addMinedToSeed(idx){
+ var k=minedKeywordCache[parseInt(idx)];
+ if(!k)return;
+ api('/marketing/api/keywords',{action:'add',keyword:k.word}).then(function(){
+  toast('已添加: '+k.word);
+  loadKw();
+ });
+}
+
+function addAllMinedToSeed(){
+ if(minedKeywordCache.length==0){toast('请先挖掘关键词');return}
+ var p=[];
+ minedKeywordCache.forEach(function(k){
+  p.push(api('/marketing/api/keywords',{action:'add',keyword:k.word}));
+ });
+ Promise.all(p).then(function(){
+  toast('已添加 '+minedKeywordCache.length+' 个关键词');
+  loadKw();
+ });
+}
+
+
+// ===== v5.6.2 新增：发布审核 =====
+
+var selectedContentIds=[];
+
+function toggleSelectContent(cid){
+ var idx=selectedContentIds.indexOf(cid);
+ if(idx>=0){selectedContentIds.splice(idx,1)}
+ else{selectedContentIds.push(cid)}
+}
+
+function submitSelectedForReview(){
+ if(selectedContentIds.length==0){toast('请先勾选内容');return}
+ api('/marketing/api/contents').then(function(r){
+  var items=(r.contents||[]).filter(function(c){return selectedContentIds.indexOf(c.id)>=0});
+  if(items.length==0){toast('未找到选中内容');return}
+  var submitItems=items.map(function(c){
+   var platformMap={video_script:'douyin',article:'wechat_article',xhs_note:'xhs',baijiahao:'baijiahao',zhihu:'zhihu',weibo:'weibo'};
+   return {content:c.content,platform:platformMap[c.type]||'wechat_article',keyword:c.keyword,title:c.keyword+' - '+c.type};
+  });
+  api('/marketing/api/publish/batch-submit',{items:submitItems}).then(function(r){
+   toast('已提交 '+r.count+' 条审核');
+   loadPublishQueue('pending');
+  });
+ });
+}
+
+async function loadPublishQueue(status){
+ var url='/marketing/api/publish/queue';if(status)url+='?status='+status;
+ var r=await api(url);
+ var items=r.queue||[];
+ var stats=r.stats||{};
+ document.getElementById('publishQueueSummary').textContent='(待审:'+(stats.by_status?stats.by_status.pending:0)+' 已发:'+(stats.by_status?stats.by_status.published:0)+')';
+ var box=document.getElementById('publishQueueList');
+ if(items.length==0){
+  box.innerHTML='<div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">暂无内容</div>';
+  return;
+ }
+ var html='';
+ var statusLabel={pending:'⏳待审核',approved:'✅已通过',rejected:'❌已驳回',published:'🚀已发布'};
+ var statusColor={pending:'#975a16',approved:'#276749',rejected:'#9b2c2c',published:'#0f3460'};
+ items.slice(0,30).forEach(function(item){
+  html+='<div class="content-item">';
+  html+='<div class="ci-header">';
+  html+='<span class="ci-type" style="background:'+(statusColor[item.status]||'#f0f2f5')+';color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">'+(statusLabel[item.status]||item.status)+'</span>';
+  html+='<span style="font-size:11px">'+item.platform_label+' | '+(item.submitted_at||'').substr(0,16)+'</span>';
+  html+='</div>';
+  html+='<div style="font-size:13px;margin:4px 0;font-weight:600">'+item.title+'</div>';
+  html+='<div class="ci-content">'+(item.content||'').substr(0,120)+'...</div>';
+  html+='<div class="ci-actions">';
+  if(item.status=='pending'){
+   html+='<button class="btn btn-sm" onclick="approvePublish(\''+item.id+'\')">通过</button>';
+   html+='<button class="btn btn-sm btn-secondary" onclick="rejectPublish(\''+item.id+'\')">驳回</button>';
+  }
+  if(item.status=='approved'){
+   html+='<button class="btn btn-sm" onclick="doPublish(\''+item.id+'\')">发布</button>';
+  }
+  if(item.publish_url){
+   html+='<a href="'+item.publish_url+'" target="_blank" class="btn btn-sm" style="text-decoration:none">查看</a>';
+  }
+  html+='</div></div>';
+ });
+ box.innerHTML=html;
+}
+
+async function approvePublish(pid){
+ var comment=prompt('审核意见（可选）','审核通过');
+ if(comment===null)return;
+ var r=await api('/marketing/api/publish/approve',{id:pid,comment:comment||'审核通过'});
+ if(r.success){toast('已通过');loadPublishQueue('pending')}
+ else{toast('操作失败: '+(r.error||''))}
+}
+
+async function rejectPublish(pid){
+ var reason=prompt('驳回原因','内容需优化');
+ if(reason===null)return;
+ var r=await api('/marketing/api/publish/reject',{id:pid,reason:reason});
+ if(r.success){toast('已驳回');loadPublishQueue('pending')}
+ else{toast('操作失败: '+(r.error||''))}
+}
+
+async function doPublish(pid){
+ var url=prompt('发布链接（可选，留空模拟发布）','');
+ if(url===null)return;
+ var r=await api('/marketing/api/publish/publish',{id:pid,url:url});
+ if(r.success){toast('已发布!');loadPublishQueue('published')}
+ else{toast('操作失败: '+(r.error||''))}
+}
+
+
+// ===== v5.6.2 新增：效果数据看板 =====
+
+async function loadAnalyticsDashboard(){
+ document.getElementById('analyticsContent').innerHTML='<div style="text-align:center;color:#8898aa;padding:10px">加载中...</div>';
+ var r=await api('/marketing/api/analytics/dashboard');
+ var d=r.dashboard||{};
+ var ov=d.overview||{};
+ var html='';
+ 
+ // 总览
+ html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">';
+ html+='<div style="background:#f7fafc;padding:10px;border-radius:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:#0f3460">'+ov.total_views+'</div><div style="font-size:11px;color:#8898aa">总浏览量</div></div>';
+ html+='<div style="background:#f7fafc;padding:10px;border-radius:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:#0f3460">'+ov.total_likes+'</div><div style="font-size:11px;color:#8898aa">总点赞</div></div>';
+ html+='<div style="background:#f7fafc;padding:10px;border-radius:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:#0f3460">'+ov.count+'</div><div style="font-size:11px;color:#8898aa">内容数</div></div>';
+ html+='<div style="background:#f7fafc;padding:10px;border-radius:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:#0f3460">'+ov.avg_engagement_rate+'%</div><div style="font-size:11px;color:#8898aa">平均互动率</div></div>';
+ html+='</div>';
+ 
+ // 各平台
+ var byPlatform=d.by_platform||{};
+ html+='<div style="font-weight:600;margin-bottom:4px">各平台统计</div>';
+ html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:12px">';
+ for(var p in byPlatform){
+  var ps=byPlatform[p];
+  html+='<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:12px"><b>'+p+'</b><br>浏览:'+ps.total_views+' 互动:'+ps.total_engagement+'<br>互动率:'+ps.avg_engagement_rate+'%</div>';
+ }
+ html+='</div>';
+ 
+ // 趋势
+ var trend=d.trend_7d||[];
+ if(trend.length>0){
+  html+='<div style="font-weight:600;margin-bottom:4px">近7天趋势</div>';
+  html+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">';
+  trend.forEach(function(t){
+   var maxH=40;var barH=Math.max(4,Math.min(maxH,t.views/Math.max(1,d.overview.total_views||1)*maxH));
+   html+='<div style="flex:1;text-align:center;font-size:10px"><div style="background:#0f3460;height:'+barH+'px;border-radius:2px 2px 0 0;margin-bottom:2px"></div>'+t.date.substr(5)+'<br>'+t.views+'阅</div>';
+  });
+  html+='</div>';
+ }
+ document.getElementById('analyticsContent').innerHTML=html||'暂无数据';
+ toast('看板已刷新');
+}
+
+function showRecordMetrics(){
+ var pid=prompt('输入发布ID（从发布审核列表获取）','');
+ if(!pid)return;
+ var views=parseInt(prompt('浏览量',0))||0;
+ var likes=parseInt(prompt('点赞数',0))||0;
+ var comments=parseInt(prompt('评论数',0))||0;
+ var shares=parseInt(prompt('分享数',0))||0;
+ var saves=parseInt(prompt('收藏数',0))||0;
+ api('/marketing/api/analytics/record',{publish_id:pid,platform:'',views:views,likes:likes,comments:comments,shares:shares,saves:saves}).then(function(r){
+  toast('数据已录入!');
+  loadAnalyticsDashboard();
+ });
+}
+
+async function loadAnalyticsRecords(platform){
+ var url='/marketing/api/analytics/records';if(platform)url+='?platform='+platform;
+ var r=await api(url);
+ var records=r.records||[];
+ var box=document.getElementById('analyticsContent');
+ if(records.length==0){
+  box.innerHTML='<div style="text-align:center;color:#8898aa;padding:10px">暂无效果数据，请先录入</div>';
+  return;
+ }
+ var html='';
+ records.slice(0,20).forEach(function(rec){
+  html+='<div class="content-item">';
+  html+='<div style="display:flex;justify-content:space-between"><span style="font-weight:600">'+rec.platform+'</span><span style="font-size:11px;color:#8898aa">'+(rec.updated_at||'').substr(0,16)+'</span></div>';
+  html+='<div style="display:flex;gap:12px;margin-top:4px;font-size:12px">';
+  html+='<span>👁 '+rec.views+'</span><span>❤ '+rec.likes+'</span><span>💬 '+rec.comments+'</span><span>🔄 '+rec.shares+'</span>';
+  html+='</div>';
+  html+='<div style="font-size:11px;color:#0f3460;margin-top:2px">互动率: '+rec.engagement_rate+'%</div>';
+  html+='</div>';
+ });
+ box.innerHTML=html;
+}
+
+
+// ===== 初始化增加 =====
+setTimeout(function(){
+ loadPublishQueue('pending');
+},200);
+
+
+
+
+// ===== v5.6.2 AI Quality Engine JS =====
+
+async function aiFullReview(){
+ var content=document.getElementById("aiReviewContent").value.trim();
+ if(!content){toast("请粘贴内容或点击已生成的内容");return}
+ document.getElementById("aiQualityResult").innerHTML="AI分析中...";
+ var r=await api("/marketing/api/ai-quality/full-review",{content:content,platform:"wechat_article"});
+ var rev=r.review||{};
+ var scores=rev.scores||{};
+ var html="<div><b>AI评分:</b> ";
+ html+="总分 <span style=\'font-size:18px;font-weight:700;color:"+(scores.total>=80?"#276749":"#975a16")+"\'>"+scores.total+"</span>/100";
+ html+=" | 可读性:"+scores.readability+" | SEO:"+scores.seo+" | 吸引力:"+scores.engagement+" | 品牌:"+scores.brand_fit;
+ html+="<br/><span style=\'color:#8898aa;font-size:12px\'>"+(scores.comment||"")+"</span></div>";
+ var sug=rev.suggestions||[];
+ if(sug.length>0){
+  html+="<div style=\'margin-top:10px\'><b>优化建议:</b></div>";
+  sug.forEach(function(s,i){
+   html+="<div style=\'padding:4px 0;border-bottom:1px solid #f0f2f5\'><span class=\'tag\' style=\'font-size:10px\'>"+s.priority+"</span> "+s.suggestion+"</div>";
+  });
+ }
+ if(rev.optimized&&rev.optimized!==content){
+  html+="<div style=\'margin-top:10px\'><b>AI优化版:</b></div>";
+  html+="<div style=\'background:#fff;padding:8px;border-radius:6px;max-height:150px;overflow-y:auto;font-size:12px\'>"+rev.optimized.replace(/\n/g,"<br/>")+"</div>";
+  html+="<button class=\'btn btn-sm\' onclick=\'document.getElementById(\'aiReviewContent\').value=this.previousSibling.textContent\' style=\'margin-top:4px\'>采用优化版</button>";
+ }
+ document.getElementById("aiQualityResult").innerHTML=html||"评估完成";
+ toast("AI评估完成");
+}
+
+async function aiScoreOnly(){
+ var content=document.getElementById("aiReviewContent").value.trim();
+ if(!content){toast("请粘贴内容");return}
+ document.getElementById("aiQualityResult").innerHTML="AI评分中...";
+ var r=await api("/marketing/api/ai-quality/score",{content:content,platform:"wechat_article"});
+ var s=r.scores||{};
+ var html="<div><b>AI评分:</b> 总分 <span style=\'font-size:20px;font-weight:700\'>"+s.total+"</span>/100</div>";
+ html+="<div style=\'display:flex;gap:12px;margin-top:8px\'>";
+ html+="<div>可读性<br/><b>"+s.readability+"</b></div>";
+ html+="<div>SEO<br/><b>"+s.seo+"</b></div>";
+ html+="<div>吸引力<br/><b>"+s.engagement+"</b></div>";
+ html+="<div>品牌匹配<br/><b>"+s.brand_fit+"</b></div>";
+ html+="</div><div style=\'margin-top:8px;color:#8898aa\'>"+(s.comment||"")+"</div>";
+ document.getElementById("aiQualityResult").innerHTML=html;
+}
+
+async function aiOptimize(){
+ var content=document.getElementById("aiReviewContent").value.trim();
+ if(!content){toast("请粘贴内容");return}
+ document.getElementById("aiQualityResult").innerHTML="AI优化中...";
+ var r=await api("/marketing/api/ai-quality/optimize",{content:content,platform:"wechat_article"});
+ var opt=r.optimized||content;
+ document.getElementById("aiQualityResult").innerHTML="<b>AI优化版:</b><div style=\'background:#fff;padding:8px;border-radius:6px;margin-top:4px;white-space:pre-wrap;font-size:13px\'>"+opt+"</div><button class=\'btn btn-sm\' onclick=\'document.getElementById(\'aiReviewContent\').value=this.previousElementSibling.textContent\' style=\'margin-top:4px\'>采用此版本</button>";
+ toast("优化完成");
+}
+
+async function aiInsight(){
+ var r=await api("/marketing/api/analytics/dashboard");
+ var db=r.dashboard||{};
+ document.getElementById("aiQualityResult").innerHTML="AI分析中...";
+ var r2=await api("/marketing/api/ai-quality/insight",{analytics:db.overview||{}});
+ var ins=r2.insight||{};
+ var html="<b>AI效果洞察:</b><br/>"+ins.insight+"<br/><br/>";
+ if(ins.strengths&&ins.strengths.length)html+="<b>优势:</b> "+ins.strengths.join(", ")+"<br/>";
+ if(ins.weaknesses&&ins.weaknesses.length)html+="<b>弱点:</b> "+ins.weaknesses.join(", ")+"<br/>";
+ if(ins.next_actions&&ins.next_actions.length)html+="<b>下一步:</b><br/>"+ins.next_actions.map(function(a){return "- "+a}).join("<br/>");
+ document.getElementById("aiQualityResult").innerHTML=html||"分析完成";
+}
+
+async function aiStrategy(){
+ document.getElementById("aiQualityResult").innerHTML="AI策略分析中...";
+ var r=await api("/marketing/api/analytics/dashboard");
+ var r2=await api("/marketing/api/ai-quality/strategy",{history:r.dashboard||{}});
+ var st=r2.strategy||{};
+ var html="<b>AI策略推荐:</b><br/>";
+ html+="最佳平台: <b>"+st.best_platform+"</b><br/>";
+ html+="最佳类型: <b>"+st.best_content_type+"</b><br/>";
+ html+="最佳时间: <b>"+st.best_publish_time+"</b><br/>";
+ if(st.topic_suggestions)html+="推荐话题: "+st.topic_suggestions.join(", ")+"<br/>";
+ html+="<br/><b>总结:</b> "+st.overall_strategy;
+ document.getElementById("aiQualityResult").innerHTML=html;
+}
+
+// ===== v5.6.2 Publish Export =====
+
+async function exportForPublish(){
+ var items=document.querySelectorAll("#publishQueueList .content-item");
+ if(items.length==0){toast("审核队列为空");return}
+ // Get first approved item content
+ var r=await api("/marketing/api/publish/queue?status=approved");
+ var queue=r.queue||[];
+ if(queue.length==0){toast("没有已通过的内容可导出");return}
+ var item=queue[0];
+ var pkg=await api("/marketing/api/publish/export",{content:item.content,platform:item.platform,title:item.title,keyword:item.keyword});
+ var p=pkg.package||{};
+ var html="<b>导出发布包 - "+p.platform_name+"</b><br/>";
+ html+="提示: "+p.export_hint+"<br/><br/>";
+ html+="<textarea style=\'width:100%;height:120px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;padding:8px\'>"+p.content+"</textarea>";
+ html+="<button class=\'btn btn-sm\' onclick=\'navigator.clipboard.writeText(this.previousElementSibling.value);toast(\'已复制\')\' style=\'margin-top:4px\'>一键复制</button>";
+ html+="<button class=\'btn btn-sm btn-secondary\' onclick=\'publishToWechat()\' style=\'margin-top:4px;margin-left:4px\'>发布到微信</button>";
+ document.getElementById("aiQualityResult").innerHTML=html;
+}
+
+async function publishToWechat(){
+ var r=await api("/marketing/api/publish/queue?status=approved");
+ var queue=r.queue||[];
+ if(queue.length==0){toast("没有已通过的内容");return}
+ var item=queue[0];
+ document.getElementById("aiQualityResult").innerHTML="正在发布到微信公众号草稿箱...";
+ var r2=await api("/marketing/api/publish/to-wechat",{title:item.title,content:item.content,keyword:item.keyword,publish_id:item.id});
+ var res=r2.result||{};
+ if(res.success){
+  document.getElementById("aiQualityResult").innerHTML="<b style=\'color:#276749\'>已成功发布到微信公众号草稿箱! 🎉</b><br/>草稿Media ID: "+res.media_id;
+  toast("微信发布成功!");
+  loadPublishQueue("");
+ }else if(res.ready_to_paste){
+  document.getElementById("aiQualityResult").innerHTML="<b style=\'color:#975a16\'>微信未配置APP_SECRET</b><br/>"+res.error+"<br/><br/><b>手动发布:</b> "+res.paste_instruction;
+  toast("微信未配置，请手动发布");
+ }else{
+  document.getElementById("aiQualityResult").innerHTML="<b style=\'color:#e53e3e\'>发布失败</b><br/>"+JSON.stringify(res);
+  toast("发布失败");
+ }
+}
+
+
+// ===== v5.7.0 全自动化发布 =====
+
+function getAutoPlatforms(){
+ var cbs=document.querySelectorAll('input[type=checkbox][value]:checked');
+ return Array.from(cbs).map(function(cb){return cb.value}).filter(function(v){return v});
+}
+
+function startAutoPublish(){
+ var platforms=getAutoPlatforms();
+ if(platforms.length===0){toast('请至少选择一个平台');return;}
+ var seedStr=document.getElementById('autoSeedKw').value;
+ var seeds=seedStr?seedStr.split(/[,，]/).map(function(s){return s.trim()}).filter(Boolean):null;
+ var maxCount=parseInt(document.getElementById('autoMaxCount').value)||3;
+ var autoPub=document.getElementById('autoPubMode').value==='true';
+ var statusDiv=document.getElementById('autoPublishStatus');
+ statusDiv.style.display='block';
+ statusDiv.innerHTML='<div style="display:flex;align-items:center;gap:8px;color:#0f3460">全自动化流水线启动中...<br/>平台: '+platforms.join(',')+' | 自动发布: '+(autoPub?'是':'否(预览)')+'</div>';
+
+ api('/marketing/api/auto-publish/start',{platforms:platforms,seed_keywords:seeds,auto_publish:autoPub,max_count:maxCount}).then(function(r){
+  var job=r.job||r;
+  var html='<b>流水线任务: '+job.job_id+'</b> <span style="font-size:11px;color:#8898aa">'+job.total_time_s+'s</span><br/>';
+  html+='状态: <b>'+(job.status==='done'?'#276749':job.status==='error'?'#e53e3e':'#975a16')+'">'+job.status+'</b><br/>';
+  if(job.steps){
+   job.steps.forEach(function(s){
+    html+='&nbsp;&nbsp;'+s.step+': '+s.status;
+    if(s.keywords_found) html+=' ('+s.keywords_found+'个关键词)';
+    if(s.generated) html+=' ('+s.generated+'条内容)';
+    if(s.published!==undefined) html+=' (发布'+s.published+'/'+(s.published+s.failed)+')';
+    html+='<br/>';
+   });
+  }
+  if(job.results&&job.results.length>0){
+   html+='<br/><b>发布结果:</b><br/>';
+   job.results.forEach(function(re){
+    var icon=re.success?"OK":"FAIL";
+    html+=dot+' <b>'+re.platform_name+'</b>: '+(re.success?'成功':'失败')+'<br/>';
+    if(re.keyword) html+='  <span style="color:#8898aa;font-size:11px">关键词: '+re.keyword+'</span><br/>';
+    if(re.error) html+='  <span style="color:#e53e3e;font-size:11px">'+re.error+'</span><br/>';
+    if(re.need_login) html+='  <span style="color:#975a16;font-size:11px">需先扫码登录</span><br/>';
+   });
+  }
+  if(job.error) html+='<br/><span style="color:#e53e3e">错误: '+job.error+'</span>';
+  statusDiv.innerHTML=html;
+  toast(job.status==='done'?'流水线完成!':'流水线执行中...');
+ }).catch(function(e){
+  statusDiv.innerHTML='<span style="color:#e53e3e">请求失败: '+e.message+'</span>';
+ });
+}
+
+function loadAutoSessions(){
+ var statusDiv=document.getElementById('autoPublishStatus');
+ statusDiv.style.display='block';
+ statusDiv.innerHTML='<div style="color:#8898aa">查询中...</div>';
+ api('/marketing/api/auto-publish/sessions').then(function(r){
+  var s=r.sessions||{};
+  var html='<b>平台登录状态:</b><br/>';
+  var needAuth=[];
+  for(var p in s){
+   var sess=s[p];
+   var dot=sess.logged_in?'<span style="color:#22c55e;font-size:18px">&#9679;</span>':'<span style="color:#dc2626;font-size:18px">&#9679;</span>';
+   var last=sess.last_login?sess.last_login.slice(0,16):'从未';
+   var cookies=sess.cookie_count?(' ('+sess.cookie_count+' cookies)'):'';
+   html+=dot+' <b>'+sess.name+'</b>: '+(sess.logged_in?'已登录':'未登录')+cookies+' (最后: '+last+')<br/>';
+   if(!sess.logged_in){
+    needAuth.push(sess.name);
+    html+='  <button class="btn btn-sm" style="background:#f59e0b;color:#fff;font-size:11px" onclick="document.getElementById(\'importPlatform\').value=\''+p+'\';showImportUI()">&rarr; 授权登录</button><br/>';
+   }
+  }
+  statusDiv.innerHTML=html;
+  var banner=document.getElementById('autoAuthBanner');
+  var list=document.getElementById('needAuthList');
+  if(banner&&list){
+   if(needAuth.length>0){
+    list.textContent=needAuth.join('、');
+    banner.style.display='block';
+   }else{
+    banner.style.display='none';
+   }
+  }
+ });
+}
+
+function requestManualLogin(platform){
+ var statusDiv=document.getElementById('autoPublishStatus');
+ statusDiv.innerHTML='<div style="color:#975a16">请在服务器上执行手动登录...</div>';
+ toast("手动登录需要在服务器端完成");
+}
+
+function showImportUI(){
+ document.getElementById('autoImportUI').style.display='block';
+}
+
+function doImportSession(){
+ var platform=document.getElementById('importPlatform').value;
+ var cookiesRaw=document.getElementById('importCookies').value.trim();
+ if(!cookiesRaw){toast('请粘贴cookies JSON');return;}
+ 
+ var statusDiv=document.getElementById('autoPublishStatus');
+ statusDiv.style.display='block';
+ statusDiv.innerHTML='<div style="color:#975a16">导入中...</div>';
+ 
+ api('/marketing/api/auto-publish/import-session',{platform:platform,cookies:cookiesRaw}).then(function(r){
+  if(r.result&&r.result.success){
+   statusDiv.innerHTML='<span style="color:#276749">'+platform+' 会话导入成功! ('+r.result.cookie_count+'个cookies)</span>';
+   document.getElementById('autoImportUI').style.display='none';
+   document.getElementById('importCookies').value='';
+   toast(platform+' cookies已导入');
+   loadAutoSessions();
+  }else{
+   statusDiv.innerHTML='<span style="color:#e53e3e">导入失败: '+(r.result?r.result.error:'未知错误')+'</span>';
+  }
+ });
+}
+
+function updateAutoPlatforms(){}
 
 </script>
 

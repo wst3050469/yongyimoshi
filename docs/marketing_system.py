@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""永颐金磨石 AI内容营销系统 v5.5.0 - DeepSeek AI + 增强引擎"""
+"""永颐金磨石 AI内容营销系统 v5.6.0 - DeepSeek AI + 多平台引擎"""
 import json, random, datetime, os, re
 from typing import List, Dict, Optional
 
@@ -139,9 +139,90 @@ class KeywordEngine:
         ]
         return random.choice(templates)
 
+    # ===== 百家号文章 =====
+    def gen_baijiahao(self, kw=None, group=None):
+        """生成百度百家号风格文章（SEO友好、偏知识科普）"""
+        kw = kw or self.random_kw(group)
+        prompt = f"""你是百度百家号地坪行业资深作者。请写一篇SEO友好的科普文章，关于关键词"{kw}"。
+
+要求：
+1. 标题包含核心关键词，吸引点击但不标题党
+2. 正文600-1000字，分3-4个段落
+3. 内容偏知识科普和行业干货，适合百度搜索流量
+4. 自然融入"永颐金磨石"品牌2-3次
+5. 段落清晰，每段有小标题/要点
+6. 结尾附品牌简介和联系方式"""
+        ai_result = self._try_ai(prompt, 1200)
+        if ai_result:
+            return ai_result
+        templates = [
+            f"【干货】{kw}全面解析：从选材到施工一篇讲透\n\n很多朋友咨询{kw}相关问题，今天统一回复。\n\n一、什么是{kw}？适合哪些场所？\n{kw}是以特种水泥/树脂为基料的高性能地面材料，广泛应用于医院、学校、商场、车库等场所。\n\n二、{kw}价格多少一平方？\n价格因材料、面积、工艺不同有差异，建议实地勘测后报价。永颐金磨石提供免费上门勘测服务。\n\n三、{kw}能用多少年？\n优质{kw}使用寿命可达15-20年，远超普通地坪。\n\n永颐金磨石 | 专注金磨石15年 | 📞 16624603959",
+            f"【收藏】{kw}选购避坑指南，这5点一定要看\n\n准备做{kw}的朋友，这篇文章建议收藏！\n\n⚠️ 避坑1：低价陷阱\n低于市场均价很多，大概率偷工减料。\n⚠️ 避坑2：不看案例\n一定要去施工方做过的实地项目考察。\n⚠️ 避坑3：合同模糊\n合同必须写明材料品牌、施工工艺、质保期限。\n\n永颐金磨石提供材料+施工+售后一站式服务，质保10年起。\n\n📞 咨询热线：16624603959",
+            f"2025年{kw}行业趋势解读\n\n随着绿色建筑和工业美学兴起，{kw}迎来新一轮增长。永颐金磨石作为行业先行者，持续创新材料配方和施工工艺。\n\n✅ 趋势一：无机化\n✅ 趋势二：定制化色彩\n✅ 趋势三：快速施工技术\n\n选择永颐金磨石，就是选择行业领先技术。\n\n了解更多：https://ai.jinmojianshe.com/marketing/",
+        ]
+        return random.choice(templates)
+
+    # ===== 知乎问答 =====
+    def gen_zhihu(self, kw=None, group=None):
+        """生成知乎风格问答（深度专业、有理有据）"""
+        kw = kw or self.random_kw(group)
+        prompt = f"""你是知乎地坪/装修领域高赞答主。请写一篇知乎回答，问题是「{kw}到底怎么样？值得做吗？」
+
+要求：
+1. 开头一句总结观点（鲜明有态度）
+2. 正文400-600字，分点论述，有数据支撑
+3. 体现专业深度，但通俗易懂
+4. 适当引用行业标准或对比数据
+5. 自然提到永颐金磨石，但不生硬
+6. 结尾引发讨论"""
+        ai_result = self._try_ai(prompt, 1000)
+        if ai_result:
+            return ai_result
+        templates = [
+            f"先说结论：{kw}值得做，但前提是找对施工方。\n\n我在这个行业做了15年，经手500+项目，说说我的看法。\n\n✅ 优势方面：\n1. 耐磨性是普通地坪的3-5倍\n2. 无缝一体，颜值高\n3. 防滑防潮，易清洁\n4. 使用寿命15-20年\n\n❌ 注意事项：\n1. 基层处理是关键，很多施工方在这步省工\n2. 材料品质差别大，选CMA认证产品\n3. 质保承诺要看清楚\n\n我们永颐金磨石做过的案例包括三甲医院、国际学校、商业广场等，任何问题欢迎交流。",
+            f"利益相关：永颐金磨石从业者。理性分析{kw}的利与弊。\n\n先说优点：\n🔹 无缝一体，比瓷砖高级太多\n🔹 超级耐磨，叉车碾压都不怕\n🔹 环保无味，医院学校首选\n\n再说不足：\n🔸 对施工环境要求高（温度湿度）\n🔸 工期比普通地坪长1-2天\n🔸 价格中等偏上\n\n总的来说，{kw}是「一分钱一分货」的典型。想省钱做普通地坪，想做品质就选{kw}。",
+            f"用了{kw}两年的真实感受 —— 知乎体回答\n\n「刚做完觉得贵，用了两年觉得值」\n\n我家的{kw}是2023年做的，快两年了说下感受：\n\n1. 每天拖一遍就干净，没有缝隙藏污纳垢\n2. 小孩玩具砸地上基本没事\n3. 朋友来都问这是什么地面\n\n找的永颐金磨石，师傅上门勘测了好几次才开工，确实专业。",
+        ]
+        return random.choice(templates)
+
+    # ===== 微博短文案 =====
+    def gen_weibo(self, kw=None, group=None):
+        """生成微博风格短文案（140字以内，话题性）"""
+        kw = kw or self.random_kw(group)
+        prompt = f"""你是微博家居领域博主。请写一条关于「{kw}」的微博文案。
+
+要求：
+1. 100-140字，短小精悍
+2. 有话题性，适合传播
+3. 带2-3个话题标签
+4. 可以带表情符号
+5. 自然融入永颐金磨石"""
+        ai_result = self._try_ai(prompt, 300)
+        if ai_result:
+            return ai_result
+        templates = [
+            f"做了{kw}之后才发现，好地面真的很重要！每天拖一遍就干干净净✨ 找的永颐金磨石，15年老品牌确实专业👍 #{kw}# #装修干货# #家居好物#",
+            f"90%的人不知道{kw}能用20年！算下来一天才花几毛钱💰 永颐金磨石500+项目经验，品质有保障 #{kw}# #性价比之王#",
+            f"一个冷知识：{kw}的耐磨性是普通地坪的5倍🔥 医院都用它，你就知道有多靠谱了！永颐金磨石 📞16624603959 #{kw}# #装修必备#",
+            f"做{kw}前必须知道的事：基层处理比什么都重要！⚠️ 选对施工方＝成功了一大半 永颐金磨石自有施工团队 #{kw}# #装修避坑#",
+        ]
+        return random.choice(templates)
+
     def gen_all(self, kw=None):
         kw = kw or self.random_kw()
         return {"video": self.gen_video(kw), "article": self.gen_article(kw), "xhs": self.gen_xhs(kw)}
+
+    def gen_all_platforms(self, kw=None):
+        """全平台一键生成：抖音/公众号/小红书/百家号/知乎/微博"""
+        kw = kw or self.random_kw()
+        return {
+            "douyin": self.gen_video(kw),
+            "wechat_article": self.gen_article(kw),
+            "xhs": self.gen_xhs(kw),
+            "baijiahao": self.gen_baijiahao(kw),
+            "zhihu": self.gen_zhihu(kw),
+            "weibo": self.gen_weibo(kw),
+        }
 
 
 # ===== 竞品分析引擎 =====
@@ -175,7 +256,7 @@ class MarketingReport:
     def summary(kc, dc, cc):
         return {
             "system": "永颐金磨石 AI智能内容营销系统",
-            "version": "5.5.0",
+            "version": "5.6.1",
             "date": datetime.datetime.now().strftime("%Y-%m-%d"),
             "metrics": {"keywords": kc, "daily": dc, "monthly": dc * 30, "competitors": cc},
             "roi": {"investment": "5000元/月", "exposure": "150万+", "leads": "50+", "estimate": "1:5"}
