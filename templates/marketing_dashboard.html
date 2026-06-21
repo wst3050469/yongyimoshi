@@ -298,6 +298,7 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 <button class="btn btn-sm btn-secondary" onclick="loadContentHistory('article')">公众号文章</button>
 <button class="btn btn-sm btn-secondary" onclick="loadContentHistory('xhs_note')">小红书笔记</button>
 <button class="btn btn-sm btn-secondary" onclick="batchGenerate()">批量生成</button>
+<button class="btn btn-sm btn-secondary" onclick="exportAllContent()">导出全部</button>
 </div>
 <div id="contentHistory"><div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">加载中...</div></div>
 
@@ -994,6 +995,33 @@ async function batchGenerate(){
  toast('已生成 '+count+' 条内容');
  loadContentHistory('');
 }
+
+
+// ===== 导出内容 =====
+function exportAllContent(){
+ api('/marketing/api/contents').then(function(r){
+  var items=r.contents||[];
+  if(items.length==0){toast('没有可导出的内容');return}
+  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记'};
+  var txt='永颐金磨石 AI内容营销系统 - 导出报告\n生成时间: '+new Date().toLocaleString()+'\n\n';
+  txt+='='.repeat(50)+'\n\n';
+  items.forEach(function(c,i){
+   var label=typeLabel[c.type]||c.type;
+   txt+=i+1+'. ['+label+'] '+c.keyword+'\n';
+   txt+='   时间: '+(c.created_at||'').substr(0,16)+'\n';
+   txt+='   内容: '+(c.content||'').substr(0,300)+'...\n\n';
+  });
+  var blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='yongyi_content_'+new Date().toISOString().substr(0,10)+'.txt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('导出成功: '+items.length+'条');
+ });
+}
+
+
 </script>
 
 </body>
