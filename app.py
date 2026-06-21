@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""永颐金磨石 AI营销系统 Flask App - v5.1.0 (集成豆包视频生成)"""
+"""永颐金磨石 AI营销系统 Flask App - v5.2.0 (内容持久化+视频增强)"""
 import sys, os, json, logging
 from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
 from flask import Flask, jsonify, request, render_template
 from docs.marketing_system import KeywordEngine, CompetitorAnalyzer, MarketingReport
 from docs.video_generator import VideoGenerator
+from docs.content_store import ContentStore
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
@@ -17,15 +18,16 @@ app = Flask(__name__)
 def add_cors(resp):
     resp.headers['Access-Control-Allow-Origin'] = '*'
     resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-    resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, DELETE'
     return resp
 
-# ===== 核心引擎实例 =====
+# ===== 全局实例 =====
 ke = KeywordEngine()
 ca = CompetitorAnalyzer()
 vg = VideoGenerator()
+cs = ContentStore()
 
-# ===== 基础路由 =====
+# ===== 首页 =====
 
 @app.route("/")
 def index():
@@ -33,7 +35,25 @@ def index():
 
 @app.route("/health")
 def health():
-    return jsonify({"status":"ok","service":"yongyi-marketing","version":"5.1.0","time":datetime.now().isoformat()})
+    return jsonify({"status":"ok","service":"yongyi-marketing","version":"5.2.0","time":datetime.now().isoformat()})
+
+# ===== 仪表盘统计 =====
+
+@app.route("/api/stats")
+def stats():
+    """返回仪表盘所有统计数据"""
+    kws = ke.get_kws()
+    kw_count = sum(len(v) for v in kws.values())
+    content_stats = cs.get_stats()
+    comps = ca.get_comps()
+    video_tasks = vg.get_all_tasks()
+    return jsonify({
+        "keywords": kw_count,
+        "contents": content_stats["total"],
+        "competitors": len(comps),
+        "reports": content_stats["daily"],
+        "videos": len(video_tasks)
+    })
 
 # ===== 关键词管理 =====
 
@@ -50,7 +70,7 @@ def keywords():
         return jsonify({"status": "error", "message": "invalid"})
     return jsonify({"keywords": ke.get_kws()})
 
-# ===== 内容生成 =====
+# ===== 内容生成（自动保存到历史） =====
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
@@ -58,13 +78,41 @@ def generate():
     kw = data.get("keyword", "") or "磨石"
     grp = data.get("group", "产品词")
     log.info(f"Generating content: keyword={kw}, group={grp}")
+    
+    # 生成内容
+    video_script = ke.gen_video(kw, grp)
+    article = ke.gen_article(kw, grp)
+    xhs = ke.gen_xhs(kw, grp)
+    
+    # 自动持久化保存
+    cs.save("video_script", kw, grp, video_script)
+    cs.save("article", kw, grp, article)
+    cs.save("xhs_note", kw, grp, xhs)
+    
     return jsonify({
-        "video": ke.gen_video(kw, grp),
-        "article": ke.gen_article(kw, grp),
-        "xhs": ke.gen_xhs(kw, grp)
+        "video": video_script,
+        "article": article,
+        "xhs": xhs
     })
 
-# ===== 竞品管理 =====
+# ===== 内容历史管理 =====
+
+@app.route("/api/contents", methods=["GET", "DELETE"])
+def contents():
+    if request.method == "DELETE":
+        data = request.get_json() or {}
+        cid = data.get("id", "")
+        if cid and cs.delete(cid):
+            log.info(f"Content deleted: {cid}")
+            return jsonify({"status": "ok"})
+        return jsonify({"status": "error", "message": "not found"}), 404
+    # GET: 获取内容历史，支持 type 筛选
+    content_type = request.args.get("type", "")
+    if content_type:
+        return jsonify({"contents": cs.get_by_type(content_type)})
+    return jsonify({"contents": cs.get_all()})
+
+# ===== 竞品分析 =====
 
 @app.route("/api/competitors", methods=["GET", "POST"])
 def competitors():
@@ -91,10 +139,11 @@ def report():
     data = request.get_json() or {}
     kws = ke.get_kws()
     comps = ca.get_comps()
-    summary_info = MarketingReport.summary(len(kws), 28, len(comps))
+    content_stats = cs.get_stats()
+    summary_info = MarketingReport.summary(len(kws), content_stats["daily"], len(comps))
     return jsonify({"report": summary_info, "summary": summary_info})
 
-# ===== 豆包视频生成 =====
+# ===== 视频生成 =====
 
 @app.route("/api/video/create", methods=["POST"])
 def video_create():
@@ -104,11 +153,10 @@ def video_create():
     keyword = data.get("keyword", "")
     group = data.get("group", "产品词")
     
-    # 如果没有提供prompt，自动生成
     if not prompt and keyword:
         prompt = vg.generate_prompt(keyword, group)
     if not prompt:
-        return jsonify({"status": "error", "message": "请输入prompt或关键词"})
+        return jsonify({"status": "error", "message": "请提供prompt或关键词"})
     
     ref_images = data.get("ref_images", None)
     ref_video = data.get("ref_video", None)

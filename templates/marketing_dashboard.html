@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>永颐金磨石 AI内容营销系统 v5.0.0</title>
+<title>永颐金磨石 AI内容营销系统 v5.2.0</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;background:#f0f2f5;min-height:100vh}
@@ -11,7 +11,7 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 .topbar h1{font-size:20px;font-weight:600}
 .topbar .badge{background:rgba(255,255,255,0.15);padding:4px 12px;border-radius:12px;font-size:12px}
 .container{max-width:1400px;margin:0 auto;padding:24px}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
 .stat-card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
 .stat-card .num{font-size:28px;font-weight:700;color:#0f3460}
 .stat-card .label{font-size:13px;color:#8898aa;margin-top:4px}
@@ -33,12 +33,41 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 @media(max-width:768px){.stats{grid-template-columns:repeat(2,1fr)}.grid-2{grid-template-columns:1fr}}
 .toast{position:fixed;top:20px;right:20px;background:#0f3460;color:#fff;padding:12px 24px;border-radius:8px;z-index:9999;display:none;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,0.2)}
 .loading{display:none;text-align:center;padding:10px;color:#8898aa}
+
+.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:12px}
+.video-card{border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff;transition:all .15s}
+.video-card:hover{box-shadow:0 4px 12px rgba(0,0,0,0.1);transform:translateY(-2px)}
+.video-card video{width:100%;max-height:160px;display:block;background:#000;border-bottom:1px solid #e2e8f0}
+.video-card .vc-body{padding:10px}
+.video-card .vc-id{font-family:monospace;font-size:11px;color:#8898aa}
+.video-card .vc-prompt{font-size:13px;color:#2d3748;margin:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.status-pending{background:#fefcbf;color:#975a16}
+.status-running{background:#bee3f8;color:#2a4365}
+.status-succeeded{background:#c6f6d5;color:#276749}
+.status-failed{background:#fed7d7;color:#9b2c2c}
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal-box{background:#fff;border-radius:12px;padding:24px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto}
+.modal-box video{width:100%;max-height:360px;border-radius:6px;margin:8px 0}
+.modal-box h3{font-size:16px;margin-bottom:12px}
+.modal-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#8898aa}
+.modal-close:hover{color:#1a1a2e}
+.content-item{border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px}
+.content-item .ci-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.content-item .ci-type{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:600}
+.ci-type-video_script{background:#ebf4ff;color:#0f3460}
+.ci-type-article{background:#fefcbf;color:#975a16}
+.ci-type-xhs_note{background:#ffe0f0;color:#9b2c6b}
+.content-item .ci-content{font-size:13px;color:#4a5568;line-height:1.6;max-height:80px;overflow-y:auto;white-space:pre-wrap}
+.content-item .ci-actions{margin-top:6px;display:flex;gap:6px}
+
 </style>
 </head>
 <body>
 <div class="topbar">
 <h1>永颐金磨石 AI智能内容营销系统</h1>
-<span class="badge">v5.0.0</span>
+<span class="badge">v5.2.0</span>
 </div>
 <div class="container">
 <div class="stats">
@@ -113,6 +142,11 @@ body{font-family:-apple-system,"Microsoft YaHei","PingFang SC",sans-serif;backgr
 </div>
 <div class="loading" id="videoLoading" style="display:none;text-align:center;padding:10px;color:#8898aa">正在提交视频生成任务...</div>
 <div id="videoTaskList" style="margin-top:12px"></div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+<h2>内容历史</h2>
+<div id="contentHistory"><div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">加载中...</div></div>
 </div>
 <div style="text-align:center;padding:20px;color:#8898aa;font-size:12px">永颐金磨石 AI内容营销系统 &copy; 2025 | 数据仅供参考</div>
 </div>
@@ -250,6 +284,97 @@ loadComp();
 loadVideoKw();
 loadVideoTasks();
 
+// ===== 视频详情弹窗 =====
+function showVideoDetail(tid){
+ var tasks=window._videoTasks||[];
+ var t=tasks.find(function(x){return x.id==tid})||{};
+ var html='<div class="modal-overlay active" onclick="if(event.target==this)closeModal()"><div class="modal-box">';
+ html+='<button class="modal-close" onclick="closeModal()">&times;</button>';
+ html+='<h3>视频详情</h3>';
+ if(t.video_url){
+  html+='<video src="'+t.video_url+'" controls autoplay style="width:100%;max-height:360px;border-radius:6px"></video>';
+  html+='<div style="margin-top:8px;display:flex;gap:8px">';
+  html+='<a href="'+t.video_url+'" download class="btn btn-sm" style="text-decoration:none">下载视频</a>';
+  html+='<button class="btn btn-sm btn-secondary" onclick="copyText(\''+t.video_url+'\')">复制链接</button>';
+  html+='</div>';
+ }
+ html+='<div style="margin-top:12px;font-size:13px;line-height:1.8">';
+ html+='<div><strong>任务ID:</strong> '+(t.id||'-')+'</div>';
+ html+='<div><strong>状态:</strong> '+t.status+'</div>';
+ html+='<div><strong>提示词:</strong> '+(t.prompt||'-')+'</div>';
+ html+='<div><strong>比例:</strong> '+(t.ratio||'16:9')+'</div>';
+ html+='<div><strong>时长:</strong> '+(t.duration||'-')+'秒</div>';
+ html+='<div><strong>创建时间:</strong> '+(t.created_at||'-')+'</div>';
+ if(t.resolution)html+='<div><strong>分辨率:</strong> '+t.resolution+'</div>';
+ if(t.error)html+='<div><strong>错误:</strong> '+t.error+'</div>';
+ html+='</div></div></div>';
+ var d=document.createElement('div');
+ d.innerHTML=html;
+ document.body.appendChild(d);
+}
+
+function closeModal(){
+ var m=document.querySelector('.modal-overlay.active');
+ if(m){m.classList.remove('active');setTimeout(function(){m.remove()},300)}
+}
+
+function copyText(t){
+ navigator.clipboard.writeText(t).then(function(){toast('已复制!')})['catch'](function(){toast('复制失败')});
+}
+
+// ===== 内容历史管理 =====
+async function loadContentHistory(){
+ var r=await api('/marketing/api/contents');
+ var box=document.getElementById('contentHistory');
+ if(!r.contents||r.contents.length==0){
+  box.innerHTML='<div style="color:#8898aa;font-size:13px;text-align:center;padding:10px">暂无内容历史</div>';
+  return;
+ }
+ var html='';
+ r.contents.slice(0,20).forEach(function(c){
+  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记'};
+  var label=typeLabel[c.type]||c.type;
+  html+='<div class="content-item">';
+  html+='<div class="ci-header">';
+  html+='<span class="ci-type ci-type-'+c.type+'">'+label+'</span>';
+  html+='<span style="font-size:11px;color:#8898aa">'+(c.created_at||'').substr(0,16)+'</span>';
+  html+='</div>';
+  html+='<div class="ci-content">'+(c.content||'').substr(0,200)+'</div>';
+  html+='<div class="ci-actions">';
+  html+='<button class="btn btn-sm" onclick="copyText(\''+(c.content||'').replace(/\\n/g,'\\n').replace(/\'/g,'\\\'')+'\')">复制</button>';
+  html+='<button class="btn btn-sm btn-secondary" onclick="deleteContent(\''+c.id+'\')">删除</button>';
+  html+='</div></div>';
+ });
+ box.innerHTML=html;
+}
+
+async function deleteContent(cid){
+ if(!confirm('确定删除此内容?'))return;
+ var r=await api('/marketing/api/contents',{id:cid});
+ if(r.status=='ok'){toast('已删除');loadContentHistory()}
+ else {toast('删除失败')}
+}
+
+// 页面加载时加载统计和内容历史
+setTimeout(function(){
+ api('/marketing/api/stats').then(function(d){
+  if(d.keywords!==undefined)document.getElementById('kwCount').textContent=d.keywords;
+  if(d.contents!==undefined)document.getElementById('contentCount').textContent=d.contents;
+  if(d.competitors!==undefined)document.getElementById('compCount').textContent=d.competitors;
+  if(d.reports!==undefined)document.getElementById('reportCount').textContent=d.reports;
+  if(d.videos!==undefined)document.getElementById('videoCount').textContent=d.videos;
+ });
+ loadContentHistory();
+},100);
+
+// 保存视频任务列表供详情使用
+var origLoadVideoTasks=loadVideoTasks;
+loadVideoTasks=function(){
+ return origLoadVideoTasks().then(function(){
+  api('/marketing/api/video/tasks').then(function(r){window._videoTasks=r.tasks||[]});
+ });
+};
+
 // ===== 视频生成 =====
 var videoPollers = {};
 
@@ -282,31 +407,29 @@ async function loadVideoTasks(){
   return;
  }
  document.getElementById('videoCount').textContent=r.tasks.length;
- var html='<table style="width:100%;font-size:13px;border-collapse:collapse">';
- html+='<tr style="background:#f7fafc;font-weight:600"><td style="padding:6px 8px">任务ID</td><td>状态</td><td>关键词</td><td>时间</td></tr>';
- r.tasks.reverse().forEach(function(t){
-  var statusColor={pending:'#ecc94b',running:'#4299e1',succeeded:'#48bb78',failed:'#fc8181'};
-  var color=statusColor[t.status]||'#a0aec0';
+ var html='<div class="video-grid">';
+ r.tasks.slice().reverse().forEach(function(t){
+  var statusMap={pending:"spd",running:"srn",succeeded:"ssc",failed:"sfl"};
+  var cls=statusMap[t.status]||"";
   var created=t.created_at?t.created_at.substr(11,8):'';
-  html+='<tr style="border-top:1px solid #e2e8f0">';
-  html+='<td style="padding:6px 8px;font-family:monospace">'+(t.id?t.id.substr(0,12):'-')+'</td>';
-  html+='<td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+color+';margin-right:4px"></span>'+t.status+'</td>';
-  html+='<td>'+t.prompt+'</td>';
-  html+='<td>'+created+'</td></tr>';
-  // 已完成任务显示视频播放器
+  var vid='';
   if(t.status=='succeeded'&&t.video_url){
-   html+='<tr style="border-top:none;background:#f0fff4"><td colspan="4" style="padding:4px 8px 8px">';
-   html+='<video src="'+t.video_url+'" controls style="width:100%;max-height:180px;border-radius:6px" preload="metadata"></video>';
-   html+='</td></tr>';
+   vid='<video src="'+t.video_url+'" controls preload="metadata"></video>';
   }
+  html+='<div class="video-card" onclick="showVideoDetail(\''+t.id+'\')">';
+  html+=vid||'<div style="height:120px;background:#f7fafc;display:flex;align-items:center;justify-content:center;color:#a0aec0;font-size:12px">等待生成...</div>';
+  html+='<div class="vc-body">';
+  html+='<div class="vc-id">'+(t.id?t.id.substr(0,12):'-')+'</div>';
+  html+='<div class="vc-prompt">'+(t.prompt||'')+'</div>';
+  html+='<div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center">';
+  html+='<span class="status-badge '+cls+'">'+t.status+'</span>';
+  html+='<span style="font-size:11px;color:#8898aa">'+created+'</span>';
+  html+='</div></div></div>';
  });
- html+='</table>';
+ html+='</div>';
  list.innerHTML=html;
- // 自动轮询运行中的任务
  r.tasks.forEach(function(t){
-  if(t.status=='running'||t.status=='pending'){
-   startPollVideo(t.id);
-  }
+  if(t.status=='running'||t.status=='pending')startPollVideo(t.id);
  });
 }
 
