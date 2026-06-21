@@ -670,7 +670,7 @@ async function loadContentHistory(){
 
   var label=typeLabel[c.type]||c.type;
 
-  html+='<div class="content-item">';
+  html+='<div class="content-item" onclick="showContentDetail(\''+c.id+'\')" style="cursor:pointer">';
 
   html+='<div class="ci-header">';
 
@@ -684,7 +684,7 @@ async function loadContentHistory(){
 
   html+='<div class="ci-actions">';
 
-  html+='<button class="btn btn-sm" onclick="copyText(encodeURIComponent(c.content||\"\"))" onclick="deleteContent(\''+c.id+'\')">删除</button>';
+  html+='<button class="btn btn-sm" onclick="copyText(JSON.stringify(c.content))" onclick="deleteContent(\''+c.id+'\')">删除</button>';
 
   html+='</div></div>';
 
@@ -940,6 +940,28 @@ async function loadVideoKw(){
 
 
 
+
+
+// ===== 内容详情弹窗 =====
+function showContentDetail(cid){
+ api('/marketing/api/contents').then(function(r){
+  var items=r.contents||[];
+  var c=items.find(function(x){return x.id==cid})||{};
+  var typeLabel={video_script:'抖音脚本',article:'公众号文章',xhs_note:'小红书笔记'};
+  var label=typeLabel[c.type]||c.type||'';
+  var html='<div class="modal-overlay active" onclick="if(event.target==this)closeModal()"><div class="modal-box">';
+  html+='<button class="modal-close" onclick="closeModal()">&times;</button>';
+  html+='<h3>'+label+' - '+(c.keyword||'')+'</h3>';
+  html+='<div style="font-size:12px;color:#8898aa;margin-bottom:8px">'+(c.created_at||'')+'</div>';
+  html+='<div style="font-size:14px;line-height:1.8;white-space:pre-wrap;background:#f7fafc;padding:16px;border-radius:8px;max-height:60vh;overflow-y:auto">'+(c.content||'无内容')+'</div>';
+  var contentToCopy=c.content||'';
+  html+='<div style="margin-top:8px"><button class="btn btn-sm" onclick="copyText(contentToCopy)">复制内容</button></div>';
+  html+='</div></div>';
+  var d=document.createElement('div');
+  d.innerHTML=html;
+  document.body.appendChild(d);
+ });
+}
 </script>
 
 </body>
